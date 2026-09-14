@@ -19,12 +19,16 @@
 @theme {
   --color-canvas: #FAF8F5;
   --color-surface: #FFFFFF;
+  --color-surface-warm: #FFFBF2;
   --color-foreground: #1A1A1A;
   --color-muted: #555550;
   --color-brand: #E8640A;
+  --color-brand-dark: #C95305;
   --color-amber: #D97706;
+  --color-amber-light: #FEF3C7;
   --color-yellow: #F5C842;
   --color-border: #E8E2D9;
+  --color-border-warm: #E2D9CB;
   --color-success: #16A34A;
   --color-error: #DC2626;
 }

@@ -9,9 +9,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 /**
  * Base button component.
  *
- * - Full width — designed for single-column mobile layouts.
- * - Minimum height 52 px to meet mobile touch target guidelines.
- * - Two variants: primary (filled brand orange) and ghost (outlined).
+ * - Full width for single-column mobile layouts.
+ * - Min-height 52px for comfortable tap targets on phones.
+ * - Primary: filled brand orange with high-contrast text.
+ * - Ghost: neutral outlined button on warm surface.
  */
 export function Button({
   children,
@@ -20,16 +21,19 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const base = [
-    'w-full min-h-[52px] px-6 py-3 rounded',
-    'text-base font-semibold',
-    'transition-colors duration-150',
+    'w-full min-h-[52px] px-6 py-3.5 rounded-lg',
+    'text-base font-bold text-center select-none',
+    'transition-all duration-150',
     'focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
-    'disabled:opacity-40 disabled:cursor-not-allowed',
+    'disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none',
+    'active:scale-[0.99]',
   ].join(' ')
 
   const variants: Record<ButtonVariant, string> = {
-    primary: 'bg-brand text-white hover:bg-brand/90 active:bg-brand/80',
-    ghost: 'bg-transparent text-brand border border-brand hover:bg-brand/10 active:bg-brand/20',
+    primary:
+      'bg-brand text-white shadow-xs hover:bg-brand-dark active:bg-brand-dark',
+    ghost:
+      'bg-surface text-foreground border-2 border-border hover:border-brand/50 hover:bg-surface-warm active:bg-border/20',
   }
 
   return (
@@ -38,3 +42,4 @@ export function Button({
     </button>
   )
 }
+

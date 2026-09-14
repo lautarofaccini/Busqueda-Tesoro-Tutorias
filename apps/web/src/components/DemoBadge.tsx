@@ -1,17 +1,17 @@
 /**
- * Visible banner marking a screen as a Phase 0 prototype.
- * Must not appear on any production route.
+ * Subtle development-only indicator pill.
+ * Placed neatly within or near the brand header.
  */
 export function DemoBadge() {
   return (
-    <div
-      className="w-full bg-yellow/25 border-b border-yellow/50 px-5 py-2"
+    <span
       role="status"
       aria-label="Vista de prototipo"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider text-amber-900 bg-amber-100/90 border border-amber-300/70"
     >
-      <p className="text-[11px] font-mono text-foreground/60 tracking-wide">
-        [DEMO] Vista de prototipo — no funcional
-      </p>
-    </div>
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+      PROTOTIPO
+    </span>
   )
 }
+
