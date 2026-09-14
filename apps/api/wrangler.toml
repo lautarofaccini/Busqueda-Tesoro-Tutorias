@@ -1,0 +1,15 @@
+# Cloudflare Worker — busqueda-tesoro-api
+# Phase 0: skeleton only. No production resources created.
+
+name = "busqueda-tesoro-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+# D1 database — NOT YET CREATED.
+# After running: wrangler d1 create busqueda-tesoro-db
+# uncomment and fill in database_id:
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "busqueda-tesoro-db"
+# database_id = "TODO"

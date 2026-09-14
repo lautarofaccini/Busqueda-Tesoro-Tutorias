@@ -1,0 +1,25 @@
+﻿# Normalize all text files to LF in the repository.
+# On Windows checkouts, Git will convert to CRLF automatically.
+* text=auto eol=lf
+
+# Force LF for these always (even on Windows)
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+.gitignore text eol=lf
+
+# Binaries
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary

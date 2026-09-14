@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — busqueda-tesoro-tutorias
+ *
+ * Tailwind v4 @theme: each --color-* becomes a utility class.
+ *
+ *   --color-canvas     → bg-canvas        (page background)
+ *   --color-surface    → bg-surface       (card / input background)
+ *   --color-foreground → text-foreground  (primary text)
+ *   --color-muted      → text-muted       (secondary / label text)
+ *   --color-brand      → bg-brand / text-brand / border-brand  (Tutorías orange)
+ *   --color-amber      → bg-amber / text-amber
+ *   --color-yellow     → bg-yellow / text-yellow
+ *   --color-border     → border-border
+ *   --color-success    → text-success / bg-success
+ *   --color-error      → text-error / bg-error
+ */
+@theme {
+  --color-canvas: #FAF8F5;
+  --color-surface: #FFFFFF;
+  --color-foreground: #1A1A1A;
+  --color-muted: #555550;
+  --color-brand: #E8640A;
+  --color-amber: #D97706;
+  --color-yellow: #F5C842;
+  --color-border: #E8E2D9;
+  --color-success: #16A34A;
+  --color-error: #DC2626;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
