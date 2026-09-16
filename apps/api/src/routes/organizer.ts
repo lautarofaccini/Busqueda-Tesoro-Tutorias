@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Env } from '../env.d'
-import { getOrganizerResults, getRouteTotalSteps, getDefaultRoute } from '../db/queries.js'
+import { getOrganizerResults } from '../db/queries.js'
 import { calculateScore } from '../lib/scoring.js'
 import { isLocalRequest } from '../lib/cookies.js'
 
@@ -41,9 +41,6 @@ organizerRoutes.get('/results', async (c) => {
   }
 
   const rawResults = await getOrganizerResults(c.env.DB)
-  const defaultRoute = await getDefaultRoute(c.env.DB)
-  const totalSteps = defaultRoute ? await getRouteTotalSteps(c.env.DB, defaultRoute.id) : 0
-
   let activeSessions = 0
   let completedSessions = 0
 
@@ -74,13 +71,13 @@ organizerRoutes.get('/results', async (c) => {
       playerName: r.playerName,
       status: r.status,
       currentStep: r.currentStep,
-      totalSteps,
-      correctCount: r.correctCount,
-      wrongCount: r.wrongCount,
+      totalSteps: r.totalSteps,
       startedAt: r.startedAt,
       completedAt: r.completedAt,
-      durationSec,
+      correctCount: r.correctCount,
+      wrongCount: r.wrongCount,
       score,
+      durationSec,
       needsReview
     }
   })

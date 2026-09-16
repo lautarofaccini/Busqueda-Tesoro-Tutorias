@@ -6,6 +6,7 @@ import { scanToken, startSession, submitAnswer } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { Button } from '../components/Button'
+import { EventPausedEndedView } from '../components/EventPausedEndedView'
 
 /**
  * CheckpointScan — production screen for /q/:token.
@@ -59,10 +60,17 @@ export function CheckpointScan() {
         <BrandHeader />
         <main className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin mb-4" />
-          <p className="text-sm text-muted font-medium">Verificando código QR…</p>
+          <p className="text-sm text-muted font-medium">Verificando…</p>
         </main>
       </MobileShell>
     )
+  }
+
+  const state = gameState
+  if (!state) return null
+
+  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
+    return <EventPausedEndedView state={state.state} />
   }
 
   // ── Error ───────────────────────────────────────────────────────────────

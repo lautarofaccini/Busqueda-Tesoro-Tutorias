@@ -25,3 +25,45 @@ export const answerSubmitSchema = z.object({
 })
 
 export type AnswerSubmitRequest = z.infer<typeof answerSubmitSchema>
+
+// ── Admin Event Settings ──────────────────────────────────────────────────
+export const eventSettingsSchema = z.object({
+  status: z.enum(['DRAFT', 'LIVE', 'PAUSED', 'ENDED']),
+  event_name: z.string().min(1),
+  points_per_correct: z.number().int().min(0),
+  wrong_answer_penalty: z.number().int().min(0),
+  hint_penalty: z.number().int().min(0),
+  minimum_expected_completion_minutes: z.number().int().min(0),
+})
+export type EventSettingsDto = z.infer<typeof eventSettingsSchema>
+
+// ── Admin Checkpoints ─────────────────────────────────────────────────────
+export const checkpointSchema = z.object({
+  label: z.string().min(1),
+  active: z.number().int().min(0).max(1),
+  is_start: z.number().int().min(0).max(1),
+})
+export type CheckpointDto = z.infer<typeof checkpointSchema>
+
+// ── Admin Challenges ──────────────────────────────────────────────────────
+export const challengeSchema = z.object({
+  checkpoint_id: z.number().int(),
+  question_text: z.string().min(1),
+  accepted_answers: z.array(z.string().min(1)).min(1),
+  hint_text: z.string().nullable(),
+  active: z.number().int().min(0).max(1),
+})
+export type ChallengeDto = z.infer<typeof challengeSchema>
+
+// ── Admin Routes ──────────────────────────────────────────────────────────
+export const routeStepSchema = z.object({
+  position: z.number().int().min(1),
+  checkpoint_id: z.number().int(),
+  clue_text: z.string().min(1),
+})
+export const routeSchema = z.object({
+  name: z.string().min(1),
+  active: z.number().int().min(0).max(1),
+  steps: z.array(routeStepSchema)
+})
+export type RouteDto = z.infer<typeof routeSchema>

@@ -21,9 +21,10 @@ import { sessionStartSchema } from '@busqueda-tesoro/shared'
 import type { Env } from '../env.d'
 import {
   getCheckpointByToken,
-  getDefaultRoute,
+  getRandomActiveRoute,
   createSession,
   logScanEvent,
+  getEventSettings,
 } from '../db/queries.js'
 import { buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
@@ -39,6 +40,12 @@ sessionRoutes.post(
   }),
   async (c) => {
     const { playerName, startToken } = c.req.valid('json')
+    
+    // Check event lifecycle
+    const settings = await getEventSettings(c.env.DB)
+    if (!settings || settings.status !== 'LIVE') {
+      return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status || 'DRAFT' }, 403)
+    }
 
     // Verify the token is the start checkpoint
     const checkpoint = await getCheckpointByToken(c.env.DB, startToken)
@@ -52,7 +59,7 @@ sessionRoutes.post(
       return c.json({ error: 'INVALID_START_TOKEN' }, 400)
     }
 
-    const route = await getDefaultRoute(c.env.DB)
+    const route = await getRandomActiveRoute(c.env.DB)
     if (!route) {
       return c.json({ error: 'NO_ROUTE_CONFIGURED' }, 500)
     }

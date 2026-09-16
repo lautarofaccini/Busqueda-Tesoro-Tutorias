@@ -1,43 +1,57 @@
 -- LOCAL DEMO SEED DATA — busqueda-tesoro-tutorias
--- ⚠ FOR LOCAL DEVELOPMENT ONLY. Never apply to production.
--- Apply with: wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/seed_demo.sql
+-- ⚠️ FOR LOCAL DEVELOPMENT ONLY. Never apply to production.
+-- Apply with: npm run db:reset:local
 --
--- Tokens are fixed opaque values — they do NOT encode checkpoint name,
--- position, answer, or any game information.
 
--- ── Checkpoints ───────────────────────────────────────────────────────────
--- Token column and is_start column come from migrations 0001 + 0002.
-INSERT INTO checkpoints (token, sequence_order, label, is_start) VALUES
-  ('h7Xm2pL9qR3wK8nT', 0, '[DEMO] Tutorías — Inicio',       1),
-  ('v4Nj6dF1mQ5yW2bG', 1, '[DEMO] Checkpoint A',            0),
-  ('s9Kp8eA3cZ7xR4nL', 2, '[DEMO] Checkpoint B — Final',    0);
+-- ── Event Settings ──────────────────────────────────────────────────────────
+INSERT OR REPLACE INTO event_settings (id, status, event_name, points_per_correct, wrong_answer_penalty) 
+VALUES (1, 'LIVE', '[DEMO] Evento de Prueba LAN', 10, 2);
+
+-- ── Checkpoints ─────────────────────────────────────────────────────────────
+INSERT INTO checkpoints (id, token, sequence_order, label, is_start, active) VALUES
+  (1, 'h7Xm2pL9qR3wK8nT', 0, 'Tutorías — Inicio',       1, 1),
+  (2, 'v4Nj6dF1mQ5yW2bG', 1, 'DEMO A',                  0, 1),
+  (3, 's9Kp8eA3cZ7xR4nL', 2, 'DEMO B',                  0, 1),
+  (4, 'm2Tz5pX8cR1wL9qF', 3, 'DEMO C',                  0, 1),
+  (5, 'k8Rn3mP5yW2bG7xF', 4, 'DEMO D',                  0, 1);
 
 -- ── Routes ────────────────────────────────────────────────────────────────
-INSERT INTO routes (name) VALUES
-  ('[DEMO] Ruta Demo Local');
+-- Route 1: A -> B -> C
+INSERT INTO routes (id, name, active) VALUES
+  (1, 'Ruta Demo 1 (A -> B -> C)', 1);
+
+-- Route 2: D -> B -> A
+INSERT INTO routes (id, name, active) VALUES
+  (2, 'Ruta Demo 2 (D -> B -> A)', 1);
 
 -- ── Route steps ───────────────────────────────────────────────────────────
--- clue_text is what the player sees AFTER starting / after completing prev step.
--- It tells them where to go to find the NEXT QR.
+-- Route 1
 INSERT INTO route_steps (route_id, position, checkpoint_id, clue_text) VALUES
-  (1, 1,
-   (SELECT id FROM checkpoints WHERE token = 'v4Nj6dF1mQ5yW2bG'),
-   '[DEMO] Primera pista: buscá el código QR marcado "DEMO A" en el lugar de prueba.'),
-  (1, 2,
-   (SELECT id FROM checkpoints WHERE token = 's9Kp8eA3cZ7xR4nL'),
-   '[DEMO] Segunda pista: buscá el código QR marcado "DEMO B" para terminar el recorrido.');
+  (1, 1, 2, 'Buscá el código QR marcado "DEMO A" en tu red LAN.'),
+  (1, 2, 3, 'Buscá el código QR marcado "DEMO B".'),
+  (1, 3, 4, 'Último paso: buscá el código QR marcado "DEMO C".');
+
+-- Route 2
+INSERT INTO route_steps (route_id, position, checkpoint_id, clue_text) VALUES
+  (2, 1, 5, 'Buscá el código QR marcado "DEMO D" en tu red LAN.'),
+  (2, 2, 3, 'Buscá el código QR marcado "DEMO B".'),
+  (2, 3, 2, 'Último paso: buscá el código QR marcado "DEMO A".');
 
 -- ── Challenges ────────────────────────────────────────────────────────────
--- accepted_answers: JSON array — canonical first, then aliases (all pre-normalised).
--- 4. Challenges (3 per checkpoint for pools)
 -- Demo A pool
-INSERT INTO challenges (id, checkpoint_id, question_text, accepted_answers, active) VALUES
-  (1, 2, '[DEMO] Ingresá la palabra naranja.', '["naranja"]', 1),
-  (2, 2, '[DEMO] Ingresá la palabra tutorias.', '["tutorias"]', 1),
-  (3, 2, '[DEMO] Ingresá el número 25.', '["25"]', 1);
+INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, active) VALUES
+  (2, 'Ingresá la palabra azul.', '["azul"]', 1),
+  (2, 'Ingresá la palabra rojo.', '["rojo"]', 1);
 
 -- Demo B pool
-INSERT INTO challenges (id, checkpoint_id, question_text, accepted_answers, active) VALUES
-  (4, 3, '[DEMO] Ingresá el número 40.', '["40", "cuarenta"]', 1),
-  (5, 3, '[DEMO] Ingresá la palabra final.', '["final"]', 1),
-  (6, 3, '[DEMO] Ingresá la palabra exito.', '["exito"]', 1);
+INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, active) VALUES
+  (3, 'Ingresá el número cuarenta.', '["40", "cuarenta"]', 1),
+  (3, 'Ingresá el número veinte.', '["20", "veinte"]', 1);
+
+-- Demo C pool
+INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, active) VALUES
+  (4, 'Ingresá la palabra éxito.', '["exito"]', 1);
+
+-- Demo D pool
+INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, active) VALUES
+  (5, 'Ingresá la palabra demo.', '["demo"]', 1);

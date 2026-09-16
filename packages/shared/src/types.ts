@@ -79,6 +79,16 @@ export interface StateCompleted {
   completedAt: string
 }
 
+/** Event is currently paused by organizers. Gameplay blocked. */
+export interface StateEventPaused {
+  state: 'EVENT_PAUSED'
+}
+
+/** Event is ended. Gameplay blocked. */
+export interface StateEventEnded {
+  state: 'EVENT_ENDED'
+}
+
 /** Union of all possible game states. */
 export type GameState =
   | StateNeedsStart
@@ -89,3 +99,5 @@ export type GameState =
   | StateAnswerIncorrect
   | StateAdvanced
   | StateCompleted
+  | StateEventPaused
+  | StateEventEnded

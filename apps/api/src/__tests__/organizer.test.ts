@@ -19,7 +19,8 @@ function applyMigrationsAndSeed() {
     'migrations/0001_init.sql',
     'migrations/0002_walking_skeleton.sql',
     'migrations/0003_question_pools.sql',
-    'migrations/seed_demo.sql'
+    'migrations/0004_event_admin.sql',
+    'migrations/test_seed.sql'
   ]
 
   for (const file of migrations) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export function OrganizerView() {
+export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   const [passphrase, setPassphrase] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [data, setData] = useState<any>(null)
@@ -31,8 +31,8 @@ export function OrganizerView() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
     setLoading(true)
+    setError('')
     try {
       const res = await fetch('/api/organizer/login', {
         method: 'POST',
@@ -42,7 +42,7 @@ export function OrganizerView() {
       if (res.ok) {
         await fetchResults()
       } else {
-        setError('Acceso denegado (Contraseña incorrecta)')
+        setError('Incorrect passphrase')
       }
     } catch (e) {
       setError('Network error')
@@ -50,39 +50,59 @@ export function OrganizerView() {
     setLoading(false)
   }
 
-  if (loading && !data) return <div className="p-4">Cargando...</div>
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isEmbedded) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 font-sans text-neutral-900">
         <form onSubmit={handleLogin} className="bg-white p-6 rounded-lg shadow max-w-sm w-full">
-          <h2 className="text-xl font-bold mb-4">Acceso de Organizador</h2>
+          <h2 className="text-xl font-bold mb-4">Organizer Login</h2>
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
           <input 
             type="password" 
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Contraseña"
+            placeholder="Passphrase"
             className="w-full border rounded p-2 mb-4"
             required
           />
           <button type="submit" className="w-full bg-orange-600 text-white p-2 rounded" disabled={loading}>
-            {loading ? 'Verificando...' : 'Entrar'}
+            {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
       </div>
     )
   }
 
+  if (loading && !data) {
+    return <div className="p-4">Loading results...</div>
+  }
+
+  if (!data) {
+    return <div className="p-4">No data available.</div>
+  }
+
+  const Wrapper = isEmbedded ? 'div' : 'div'
+  const wrapperClass = isEmbedded ? '' : 'min-h-screen bg-neutral-100 p-4 font-sans text-neutral-900'
+
   return (
-    <div className="min-h-screen bg-neutral-100 p-4 sm:p-8 font-sans text-neutral-900">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Resultados de Búsqueda del Tesoro</h1>
-          <button onClick={fetchResults} className="bg-neutral-200 px-4 py-2 rounded text-sm hover:bg-neutral-300">
-            Actualizar
-          </button>
-        </div>
+    <div className={wrapperClass}>
+      <div className="max-w-6xl mx-auto">
+        {!isEmbedded && (
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Resumen del Evento</h1>
+            <button onClick={fetchResults} className="bg-white border rounded px-3 py-1 shadow-sm text-sm hover:bg-neutral-50">
+              Actualizar
+            </button>
+          </div>
+        )}
+        
+        {isEmbedded && (
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Resumen de Resultados</h1>
+            <button onClick={fetchResults} className="bg-white border rounded px-3 py-1 shadow-sm text-sm hover:bg-neutral-50">
+              Actualizar
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="bg-white p-4 rounded shadow text-center">

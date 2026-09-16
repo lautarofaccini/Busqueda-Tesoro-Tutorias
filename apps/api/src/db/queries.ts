@@ -196,14 +196,19 @@ export async function getChallengeById(
   return result ?? null
 }
 
-/** Get the first available route. */
-export async function getDefaultRoute(
+/** Get a random active route. */
+export async function getRandomActiveRoute(
   db: D1Database
 ): Promise<{ id: number; name: string } | null> {
   const result = await db
-    .prepare('SELECT id, name FROM routes LIMIT 1')
+    .prepare('SELECT id, name FROM routes WHERE active = 1 ORDER BY RANDOM() LIMIT 1')
     .first<{ id: number; name: string }>()
   return result ?? null
+}
+
+export async function getEventSettings(db: D1Database) {
+  const result = await db.prepare("SELECT * FROM event_settings WHERE id = 1").first()
+  return result as any
 }
 
 /** Create a new game session. Returns the new row id. */
@@ -315,6 +320,8 @@ export async function getOrganizerResults(db: D1Database) {
       s.current_step as currentStep,
       s.started_at as startedAt, 
       s.completed_at as completedAt,
+      s.route_id as routeId,
+      (SELECT COUNT(*) FROM route_steps WHERE route_id = s.route_id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
       IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount
     FROM sessions s

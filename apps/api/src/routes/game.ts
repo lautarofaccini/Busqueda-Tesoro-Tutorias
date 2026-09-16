@@ -9,7 +9,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { getSessionToken, buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
-import { getAnySession, getActiveSession } from '../db/queries.js'
+import { getAnySession, getActiveSession, getEventSettings } from '../db/queries.js'
 import { buildGameState } from '../lib/game-state.js'
 
 const gameRoutes = new Hono<{ Bindings: Env }>()
@@ -27,6 +27,12 @@ gameRoutes.get('/state', async (c) => {
     // Token exists but not in DB — clear the stale cookie
     c.header('Set-Cookie', 'gst=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
     return c.json({ state: 'NEEDS_START' })
+  }
+
+  if (session.status !== 'completed') {
+    const settings = await getEventSettings(c.env.DB)
+    if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
+    if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
   }
 
   // Refresh cookie lifetime on each page load

@@ -9,9 +9,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate:local": "wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0001_init.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0002_walking_skeleton.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0003_question_pools.sql",
+    "db:migrate:local": "wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0001_init.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0002_walking_skeleton.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0003_question_pools.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0004_event_admin.sql",
     "db:seed:local": "wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/seed_demo.sql",
-    "db:reset:local": "wrangler d1 execute busqueda-tesoro-db --local --command=\"DELETE FROM answer_attempts; DELETE FROM scan_events; DELETE FROM session_challenge_assignments; DELETE FROM route_steps; DELETE FROM challenges; DELETE FROM routes; DELETE FROM sessions; DELETE FROM checkpoints;\" && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/seed_demo.sql"
+    "db:reset:local": "wrangler d1 execute busqueda-tesoro-db --local --command=\"DELETE FROM answer_attempts; DELETE FROM scan_events; DELETE FROM session_challenge_assignments; DELETE FROM route_steps; DELETE FROM challenges; DELETE FROM routes; DELETE FROM sessions; DELETE FROM checkpoints; DELETE FROM event_settings;\" && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/seed_demo.sql"
   },
   "dependencies": {
     "@busqueda-tesoro/shared": "*",

@@ -4,6 +4,7 @@ import type { GameState } from '@busqueda-tesoro/shared'
 import { getGameState } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
+import { EventPausedEndedView } from '../components/EventPausedEndedView'
 
 /**
  * GameScreen — shown at /game.
@@ -25,11 +26,6 @@ export function GameScreen() {
           void navigate('/', { replace: true })
         } else if (state.state === 'COMPLETED') {
           void navigate('/finish', { replace: true })
-        } else if (state.state === 'CHALLENGE' || state.state === 'ANSWER_INCORRECT') {
-          // Player refreshed while a challenge was active — go back to /game
-          // (the scan URL is gone; they'll need to rescan if they need the challenge)
-          setGameState(state)
-          setLoading(false)
         } else {
           setGameState(state)
           setLoading(false)
@@ -53,7 +49,13 @@ export function GameScreen() {
   }
 
   const state = gameState
-  if (!state || (state.state !== 'ACTIVE' && state.state !== 'ADVANCED' && state.state !== 'CHALLENGE' && state.state !== 'ANSWER_INCORRECT')) {
+  if (!state) return null
+
+  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
+    return <EventPausedEndedView state={state.state} />
+  }
+
+  if (state.state !== 'ACTIVE' && state.state !== 'ADVANCED' && state.state !== 'CHALLENGE' && state.state !== 'ANSWER_INCORRECT') {
     return null
   }
 

@@ -31,6 +31,7 @@ import {
   advanceStep,
   completeSession,
   getRouteTotalSteps,
+  getEventSettings,
 } from '../db/queries.js'
 import { getSessionToken, buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
@@ -64,6 +65,10 @@ answerRoutes.post(
     if (!session) {
       return c.json({ error: 'SESSION_NOT_FOUND' }, 401)
     }
+
+    const settings = await getEventSettings(c.env.DB)
+    if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
+    if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
 
     // 2. Challenge must be unlocked (player must have scanned the checkpoint first)
     if (session.unlocked_step !== session.current_step) {

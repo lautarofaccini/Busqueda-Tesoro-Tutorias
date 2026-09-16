@@ -74,10 +74,14 @@ function applyMigrationsAndSeed() {
     `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0003_question_pools.sql`,
     opts
   )
+  execSync(
+    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0004_event_admin.sql`,
+    opts
+  )
 
   // Apply seed
   execSync(
-    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/seed_demo.sql`,
+    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/test_seed.sql`,
     opts
   )
 }
