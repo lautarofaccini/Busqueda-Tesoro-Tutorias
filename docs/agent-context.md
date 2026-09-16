@@ -47,11 +47,15 @@ Deterministic matching:
 - no AI matching
 - no fuzzy/Levenshtein acceptance
 
+## SCORING MODEL
+- computed purely server-side from audit logs (answer attempts).
+- configurable points: +100 correct, -10 wrong attempt (defaults).
+- floor of 0.
+- duration is audit-only and does not break ties automatically (to prevent speedrunning/sharing advantages).
+- equal scores are explicitly represented as ties in the organizer view.
+- suspicious durations (< 5 mins) are visually flagged for manual organizer review.
+
 ## CURRENT OPEN PRODUCT DECISIONS (UNRESOLVED)
-- final scoring formula
-- winner selection
-- tie-breaking
-- hint penalties
 - how many stations per route
 - exact real stations
 - exact production questions

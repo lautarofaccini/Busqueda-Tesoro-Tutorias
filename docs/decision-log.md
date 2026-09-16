@@ -38,8 +38,20 @@
 
 **Question pools will be used to reduce answer-sharing usefulness**
 - *Reason:* Anti-cheat mechanism without complex real-time tracking.
-- *Status:* Being implemented.
+- *Status:* Accepted (Implemented).
 
-**Scoring/winner model remains unresolved**
-- *Reason:* Business logic for time penalties, hints, and winning rules are pending organizer confirmation.
+**Scoring is server-authoritative and time is audit-only**
+- *Reason:* Time must not determine ranking automatically because students may share answers or delay. Score is computed purely server-side from answer attempts. Configurable defaults: +100 correct, -10 wrong, floor of 0.
+- *Status:* Accepted.
+
+**Equal scores remain tied**
+- *Reason:* Fast completion doesn't break ties due to offline game nature. Prize-position ties will be resolved externally/manual draw by organizers.
+- *Status:* Accepted.
+
+**Minimal Organizer Security**
+- *Reason:* Environment-variable secret exchanged for a signed HttpOnly cookie. No complex OAuth needed.
+- *Status:* Accepted.
+
+**Unresolved product decisions**
+- *Reason:* Final values for questions/routes, hint mechanics (if any), and printed QR logistics are still pending.
 - *Status:* UNRESOLVED.

@@ -4,6 +4,7 @@ import { gameRoutes } from './routes/game.js'
 import { sessionRoutes } from './routes/session.js'
 import { scanRoutes } from './routes/scan.js'
 import { answerRoutes } from './routes/answer.js'
+import { organizerRoutes } from './routes/organizer.js'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -30,6 +31,7 @@ app.route('/api/game', gameRoutes)         // GET /api/game/state
 app.route('/api/session', sessionRoutes)   // POST /api/session/start
 app.route('/api/scan', scanRoutes)         // POST /api/scan/:token
 app.route('/api/challenge', answerRoutes)  // POST /api/challenge/:challengeId/answer
+app.route('/api/organizer', organizerRoutes) // POST /login, GET /results
 
 // ── Fallback ──────────────────────────────────────────────────────────────
 app.notFound((c) => {

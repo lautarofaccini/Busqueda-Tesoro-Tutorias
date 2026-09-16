@@ -6,4 +6,5 @@
  */
 export interface Env {
   DB: D1Database
+  ORGANIZER_SECRET: string
 }

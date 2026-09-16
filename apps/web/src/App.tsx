@@ -7,6 +7,7 @@ import { FinishScreen } from './screens/FinishScreen'
 import { DemoStart } from './screens/DemoStart'
 import { DemoGame } from './screens/DemoGame'
 import { DemoWrongCheckpoint } from './screens/DemoWrongCheckpoint'
+import { OrganizerView } from './screens/OrganizerView'
 
 /**
  * Application router.
@@ -36,6 +37,9 @@ export function App() {
         <Route path="/demo/start" element={<DemoStart />} />
         <Route path="/demo/game" element={<DemoGame />} />
         <Route path="/demo/wrong-checkpoint" element={<DemoWrongCheckpoint />} />
+        
+        {/* Organizer */}
+        <Route path="/organizer" element={<OrganizerView />} />
       </Routes>
     </BrowserRouter>
   )

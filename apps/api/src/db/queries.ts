@@ -305,3 +305,21 @@ export async function logAnswerAttempt(
     .bind(opts.sessionId, opts.challengeId, opts.rawAnswer, opts.correct ? 1 : 0)
     .run()
 }
+
+export async function getOrganizerResults(db: D1Database) {
+  const result = await db.prepare(`
+    SELECT 
+      s.id, 
+      s.player_name as playerName, 
+      s.status, 
+      s.current_step as currentStep,
+      s.started_at as startedAt, 
+      s.completed_at as completedAt,
+      IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
+      IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount
+    FROM sessions s
+    LEFT JOIN answer_attempts a ON s.id = a.session_id
+    GROUP BY s.id
+  `).all()
+  return result.results
+}
