@@ -1,5 +1,5 @@
-// Shared domain types for busqueda-tesoro-tutorias.
-// Phase 0: minimal set. Grows with each implementation phase.
+// Shared domain types — busqueda-tesoro-tutorias.
+// Phase 1: discriminated GameState union + supporting types.
 
 /** Opaque token embedded in each physical QR code. Never exposed to clients. */
 export type CheckpointToken = string & { readonly _brand: 'CheckpointToken' }
@@ -7,11 +7,85 @@ export type CheckpointToken = string & { readonly _brand: 'CheckpointToken' }
 /** A player's display name, collected at game start. */
 export type PlayerName = string & { readonly _brand: 'PlayerName' }
 
+// ── Discriminated GameState union ─────────────────────────────────────────
+// Returned by GET /api/game/state and POST /api/scan/:token.
+// Each variant carries only what the client is allowed to see.
+
+/** No active session. Player must find the start QR. */
+export interface StateNeedsStart {
+  state: 'NEEDS_START'
+}
+
+/** Token belongs to the start checkpoint. Player may enter their name. */
+export interface StateStartAllowed {
+  state: 'START_ALLOWED'
+  /** Echo the start token so the client can include it in the session/start POST. */
+  startToken: string
+}
+
+/** Session active; player is travelling to the next checkpoint. */
+export interface StateActive {
+  state: 'ACTIVE'
+  /** Clue text for the current step. Safe to show. */
+  clue: string
+  stepNumber: number
+  totalSteps: number
+  playerName: string
+}
+
 /**
- * Possible outcomes when a session scans a checkpoint token.
- *
- * - no_session  : No active game session exists.
- * - wrong_order : Session exists but this is not the expected checkpoint.
- * - correct     : Session exists and this is the correct next checkpoint.
+ * Player has scanned the correct checkpoint.
+ * Challenge is now unlocked. No answers included.
  */
-export type CheckpointScanResult = 'no_session' | 'wrong_order' | 'correct'
+export interface StateChallenge {
+  state: 'CHALLENGE'
+  challengeId: number
+  question: string
+  stepNumber: number
+  totalSteps: number
+  playerName: string
+  // NOTE: accepted answers are NEVER included here — server side only.
+}
+
+/** Player scanned a QR that does not match the expected next checkpoint. */
+export interface StateWrongCheckpoint {
+  state: 'WRONG_CHECKPOINT'
+  // No checkpoint details — reveals nothing about where they are.
+}
+
+/** Player submitted a wrong answer. */
+export interface StateAnswerIncorrect {
+  state: 'ANSWER_INCORRECT'
+  challengeId: number
+  question: string
+  stepNumber: number
+  totalSteps: number
+  playerName: string
+}
+
+/** Correct answer; route advanced. Contains the next clue. */
+export interface StateAdvanced {
+  state: 'ADVANCED'
+  clue: string
+  stepNumber: number
+  totalSteps: number
+  playerName: string
+}
+
+/** All steps completed. */
+export interface StateCompleted {
+  state: 'COMPLETED'
+  playerName: string
+  completedAt: string
+}
+
+/** Union of all possible game states. */
+export type GameState =
+  | StateNeedsStart
+  | StateStartAllowed
+  | StateActive
+  | StateChallenge
+  | StateWrongCheckpoint
+  | StateAnswerIncorrect
+  | StateAdvanced
+  | StateCompleted

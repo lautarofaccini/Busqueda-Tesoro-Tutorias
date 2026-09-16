@@ -1,15 +1,16 @@
 # Cloudflare Worker — busqueda-tesoro-api
-# Phase 0: skeleton only. No production resources created.
+# Phase 1: local walking skeleton — D1 enabled for local dev.
 
 name = "busqueda-tesoro-api"
 main = "src/index.ts"
 compatibility_date = "2024-09-01"
 
-# D1 database — NOT YET CREATED.
-# After running: wrangler d1 create busqueda-tesoro-db
-# uncomment and fill in database_id:
-#
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "busqueda-tesoro-db"
-# database_id = "TODO"
+# D1 database binding.
+# database_id is a placeholder UUID — only used for local dev via --local flag.
+# Local D1 data lives in .wrangler/state/v3/d1/ (NOT on Cloudflare servers).
+# For production, replace with the real UUID from: wrangler d1 create busqueda-tesoro-db
+[[d1_databases]]
+binding = "DB"
+database_name = "busqueda-tesoro-db"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "../../migrations"

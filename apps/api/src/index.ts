@@ -1,20 +1,37 @@
 import { Hono } from 'hono'
-import { checkpointRoutes } from './routes/checkpoint'
-import { sessionRoutes } from './routes/session'
+import { cors } from 'hono/cors'
+import { gameRoutes } from './routes/game.js'
+import { sessionRoutes } from './routes/session.js'
+import { scanRoutes } from './routes/scan.js'
+import { answerRoutes } from './routes/answer.js'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
 
-// ── Health ───────────────────────────────────────────────────────────────────
+// ── CORS (dev only — in production, Vite proxy handles this) ─────────────
+// Allow the Vite dev server to call the Worker directly if needed.
+app.use(
+  '/api/*',
+  cors({
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type'],
+    credentials: true, // required for cookie to be sent/received
+  })
+)
+
+// ── Health ────────────────────────────────────────────────────────────────
 app.get('/health', (c) => {
-  return c.json({ status: 'ok', service: 'busqueda-tesoro-api', version: '0.0.0' })
+  return c.json({ status: 'ok', service: 'busqueda-tesoro-api', version: '0.1.0' })
 })
 
-// ── Game routes ──────────────────────────────────────────────────────────────
-app.route('/api/session', sessionRoutes)
-app.route('/api/checkpoint', checkpointRoutes)
+// ── Game routes ───────────────────────────────────────────────────────────
+app.route('/api/game', gameRoutes)         // GET /api/game/state
+app.route('/api/session', sessionRoutes)   // POST /api/session/start
+app.route('/api/scan', scanRoutes)         // POST /api/scan/:token
+app.route('/api/challenge', answerRoutes)  // POST /api/challenge/:challengeId/answer
 
-// ── Fallback ─────────────────────────────────────────────────────────────────
+// ── Fallback ──────────────────────────────────────────────────────────────
 app.notFound((c) => {
   return c.json({ error: 'NOT_FOUND' }, 404)
 })

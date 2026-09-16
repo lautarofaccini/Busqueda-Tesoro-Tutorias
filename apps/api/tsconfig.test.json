@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["@types/node", "vitest/globals"],
+    "paths": {
+      "@busqueda-tesoro/shared": ["../../packages/shared/src/index.ts"],
+      "wrangler": ["../../node_modules/wrangler/wrangler-dist/cli.d.ts"]
+    }
+  },
+  "include": ["src/__tests__"]
+}

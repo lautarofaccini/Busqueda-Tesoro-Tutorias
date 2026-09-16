@@ -8,11 +8,20 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w apps/web",
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev:web\" \"npm run dev:api\"",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:api": "npm run dev -w apps/api",
     "build": "npm run build -w apps/web",
     "typecheck": "npm run typecheck -w packages/shared && npm run typecheck -w apps/web && npm run typecheck -w apps/api",
-    "test": "npm run test -w apps/web",
-    "test:watch": "npm run test:watch -w apps/web"
+    "test": "npm run test -w packages/shared && npm run test -w apps/web && npm run test -w apps/api",
+    "test:api": "npm run test -w apps/api",
+    "test:watch": "npm run test:watch -w apps/web",
+    "db:migrate:local": "npm run db:migrate:local -w apps/api",
+    "db:seed:local": "npm run db:seed:local -w apps/api",
+    "db:reset:local": "npm run db:reset:local -w apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
   },
   "engines": {
     "node": ">=20.0.0",

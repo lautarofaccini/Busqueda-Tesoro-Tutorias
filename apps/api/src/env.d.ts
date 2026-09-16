@@ -2,8 +2,8 @@
 
 /**
  * Cloudflare Worker environment bindings.
- * Phase 0: empty — DB binding added when D1 is provisioned.
+ * Phase 1: D1 database binding enabled for local development.
  */
 export interface Env {
-  // DB: D1Database
+  DB: D1Database
 }

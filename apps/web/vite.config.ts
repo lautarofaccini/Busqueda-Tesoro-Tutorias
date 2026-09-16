@@ -17,4 +17,20 @@ export default defineConfig({
       ),
     },
   },
+  server: {
+    port: 5173,
+    proxy: {
+      // Proxy all /api/* and /health requests to the local Wrangler Worker.
+      // This means the browser sees a single origin (localhost:5173) —
+      // no CORS complexity in local dev.
+      '/api': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
+  },
 })
