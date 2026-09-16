@@ -176,7 +176,7 @@ export async function assignChallenge(
 ): Promise<void> {
   await db
     .prepare(
-      'INSERT INTO session_challenge_assignments (session_id, route_step, challenge_id) VALUES (?, ?, ?)'
+      'INSERT OR IGNORE INTO session_challenge_assignments (session_id, route_step, challenge_id) VALUES (?, ?, ?)'
     )
     .bind(sessionId, routeStep, challengeId)
     .run()

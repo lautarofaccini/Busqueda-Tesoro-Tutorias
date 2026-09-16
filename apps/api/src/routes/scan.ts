@@ -170,11 +170,16 @@ scanRoutes.post('/:token', async (c) => {
   // First scan of this checkpoint — assign a question pool challenge and unlock
   let challenge = await getAssignedChallenge(c.env.DB, session.id, session.current_step)
   if (!challenge) {
-    challenge = await getRandomActiveChallengeForCheckpoint(c.env.DB, checkpoint.id)
-    if (!challenge) {
+    const randomChallenge = await getRandomActiveChallengeForCheckpoint(c.env.DB, checkpoint.id)
+    if (!randomChallenge) {
       return c.json({ error: 'NO_ACTIVE_CHALLENGES_AVAILABLE' }, 500)
     }
-    await assignChallenge(c.env.DB, session.id, session.current_step, challenge.id)
+    // INSERT OR IGNORE protects against concurrent scan assignments.
+    await assignChallenge(c.env.DB, session.id, session.current_step, randomChallenge.id)
+    
+    // Always fetch the authoritative assignment that actually exists in the DB now, 
+    // resolving any races where another request assigned it first.
+    challenge = (await getAssignedChallenge(c.env.DB, session.id, session.current_step))!
   }
 
   await unlockStep(c.env.DB, session.id, session.current_step)
