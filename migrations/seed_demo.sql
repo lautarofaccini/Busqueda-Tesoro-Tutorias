@@ -29,11 +29,15 @@ INSERT INTO route_steps (route_id, position, checkpoint_id, clue_text) VALUES
 
 -- ── Challenges ────────────────────────────────────────────────────────────
 -- accepted_answers: JSON array — canonical first, then aliases (all pre-normalised).
--- NEVER returned to clients.
-INSERT INTO challenges (checkpoint_id, question_text, accepted_answers) VALUES
-  ((SELECT id FROM checkpoints WHERE token = 'v4Nj6dF1mQ5yW2bG'),
-   '[DEMO] Ingresá la palabra naranja.',
-   '["naranja"]'),
-  ((SELECT id FROM checkpoints WHERE token = 's9Kp8eA3cZ7xR4nL'),
-   '[DEMO] Ingresá el número 40.',
-   '["40", "cuarenta"]');
+-- 4. Challenges (3 per checkpoint for pools)
+-- Demo A pool
+INSERT INTO challenges (id, checkpoint_id, question_text, accepted_answers, active) VALUES
+  (1, 2, '[DEMO] Ingresá la palabra naranja.', '["naranja"]', 1),
+  (2, 2, '[DEMO] Ingresá la palabra tutorias.', '["tutorias"]', 1),
+  (3, 2, '[DEMO] Ingresá el número 25.', '["25"]', 1);
+
+-- Demo B pool
+INSERT INTO challenges (id, checkpoint_id, question_text, accepted_answers, active) VALUES
+  (4, 3, '[DEMO] Ingresá el número 40.', '["40", "cuarenta"]', 1),
+  (5, 3, '[DEMO] Ingresá la palabra final.', '["final"]', 1),
+  (6, 3, '[DEMO] Ingresá la palabra exito.', '["exito"]', 1);

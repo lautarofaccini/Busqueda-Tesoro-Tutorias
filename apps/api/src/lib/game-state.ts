@@ -16,7 +16,7 @@
 import type { GameState } from '@busqueda-tesoro/shared'
 import type { SessionRow } from '../db/queries.js'
 import {
-  getChallengeByCheckpoint,
+  getAssignedChallenge,
   getRouteStep,
   getRouteTotalSteps,
 } from '../db/queries.js'
@@ -40,7 +40,7 @@ export async function buildGameState(
     const step = await getRouteStep(db, session.route_id, session.current_step)
     if (!step) return { state: 'NEEDS_START' }
 
-    const challenge = await getChallengeByCheckpoint(db, step.checkpoint_id)
+    const challenge = await getAssignedChallenge(db, session.id, session.current_step)
     if (!challenge) return { state: 'NEEDS_START' }
 
     return {

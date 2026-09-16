@@ -26,8 +26,7 @@ import type { Env } from '../env.d'
 import {
   getActiveSession,
   getRouteStep,
-  getChallengeById,
-  getChallengeByCheckpoint,
+  getAssignedChallenge,
   logAnswerAttempt,
   advanceStep,
   completeSession,
@@ -66,33 +65,28 @@ answerRoutes.post(
       return c.json({ error: 'SESSION_NOT_FOUND' }, 401)
     }
 
-    // 2. Challenge must exist
-    const challenge = await getChallengeById(c.env.DB, challengeId)
-    if (!challenge) {
-      return c.json({ error: 'CHALLENGE_NOT_FOUND' }, 404)
-    }
-
-    // 3. Challenge must belong to CURRENT expected checkpoint (prevents replay)
-    const expectedStep = await getRouteStep(c.env.DB, session.route_id, session.current_step)
-    if (!expectedStep || challenge.checkpoint_id !== expectedStep.checkpoint_id) {
-      return c.json({ error: 'CHALLENGE_NOT_CURRENT' }, 403)
-    }
-
-    // 4. Challenge must be unlocked (player must have scanned the checkpoint first)
-    //    unlocked_step must equal current_step — exact step match prevents replay
+    // 2. Challenge must be unlocked (player must have scanned the checkpoint first)
     if (session.unlocked_step !== session.current_step) {
       return c.json({ error: 'CHALLENGE_NOT_UNLOCKED' }, 403)
     }
 
+    // 3. Challenge must be assigned to this session for the CURRENT expected checkpoint
+    // This inherently prevents replay of an old challengeId from a previous step,
+    // and prevents substituting a different challenge from the same checkpoint's pool.
+    const assignedChallenge = await getAssignedChallenge(c.env.DB, session.id, session.current_step)
+    if (!assignedChallenge || assignedChallenge.id !== challengeId) {
+      return c.json({ error: 'CHALLENGE_NOT_CURRENT' }, 403)
+    }
+
     // 5. Normalize and compare
-    const acceptedAnswers = JSON.parse(challenge.accepted_answers) as string[]
+    const acceptedAnswers = JSON.parse(assignedChallenge.accepted_answers) as string[]
     const [canonical, ...aliases] = acceptedAnswers
     const isCorrect = matchesAcceptedAnswers(answer, canonical ?? '', aliases)
 
     // 6. Log attempt
     await logAnswerAttempt(c.env.DB, {
       sessionId: session.id,
-      challengeId: challenge.id,
+      challengeId: assignedChallenge.id,
       rawAnswer: answer,
       correct: isCorrect,
     })
@@ -103,8 +97,8 @@ answerRoutes.post(
       // No advancement, unlock preserved
       return c.json({
         state: 'ANSWER_INCORRECT',
-        challengeId: challenge.id,
-        question: challenge.question_text,
+        challengeId: assignedChallenge.id,
+        question: assignedChallenge.question_text,
         stepNumber: session.current_step,
         totalSteps,
         playerName: session.player_name,

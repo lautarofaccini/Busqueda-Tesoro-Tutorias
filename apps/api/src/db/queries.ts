@@ -48,6 +48,7 @@ export interface ChallengeRow {
   question_text: string
   accepted_answers: string // JSON array — NEVER send to client
   hint_text: string | null
+  active: number
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────
@@ -124,20 +125,61 @@ export async function getRouteTotalSteps(
 }
 
 /**
- * Get a challenge by checkpoint id.
- * accepted_answers included here — used server-side ONLY for validation.
+ * Get the challenge assigned to a session for a specific route step.
+ * accepted_answers included — used server-side ONLY for validation.
  */
-export async function getChallengeByCheckpoint(
+export async function getAssignedChallenge(
+  db: D1Database,
+  sessionId: number,
+  routeStep: number
+): Promise<ChallengeRow | null> {
+  const result = await db
+    .prepare(
+      `SELECT c.id, c.checkpoint_id, c.question_text, c.accepted_answers, c.hint_text, c.active
+       FROM challenges c
+       JOIN session_challenge_assignments a ON a.challenge_id = c.id
+       WHERE a.session_id = ? AND a.route_step = ?`
+    )
+    .bind(sessionId, routeStep)
+    .first<ChallengeRow>()
+  return result ?? null
+}
+
+/**
+ * Get a random active challenge for a checkpoint.
+ */
+export async function getRandomActiveChallengeForCheckpoint(
   db: D1Database,
   checkpointId: number
 ): Promise<ChallengeRow | null> {
   const result = await db
     .prepare(
-      'SELECT id, checkpoint_id, question_text, accepted_answers, hint_text FROM challenges WHERE checkpoint_id = ?'
+      `SELECT id, checkpoint_id, question_text, accepted_answers, hint_text, active
+       FROM challenges
+       WHERE checkpoint_id = ? AND active = 1
+       ORDER BY RANDOM()
+       LIMIT 1`
     )
     .bind(checkpointId)
     .first<ChallengeRow>()
   return result ?? null
+}
+
+/**
+ * Assign a challenge to a session for a specific route step.
+ */
+export async function assignChallenge(
+  db: D1Database,
+  sessionId: number,
+  routeStep: number,
+  challengeId: number
+): Promise<void> {
+  await db
+    .prepare(
+      'INSERT INTO session_challenge_assignments (session_id, route_step, challenge_id) VALUES (?, ?, ?)'
+    )
+    .bind(sessionId, routeStep, challengeId)
+    .run()
 }
 
 /** Get a challenge by id. accepted_answers included — server-side only. */
@@ -147,7 +189,7 @@ export async function getChallengeById(
 ): Promise<ChallengeRow | null> {
   const result = await db
     .prepare(
-      'SELECT id, checkpoint_id, question_text, accepted_answers, hint_text FROM challenges WHERE id = ?'
+      'SELECT id, checkpoint_id, question_text, accepted_answers, hint_text, active FROM challenges WHERE id = ?'
     )
     .bind(challengeId)
     .first<ChallengeRow>()

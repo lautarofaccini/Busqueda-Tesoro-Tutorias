@@ -43,6 +43,15 @@ const TOKEN_A = 'v4Nj6dF1mQ5yW2bG'
 const TOKEN_B = 's9Kp8eA3cZ7xR4nL'
 const TOKEN_UNKNOWN = 'XXXXXXXXXXXXXXXX'
 
+const DEMO_ANSWERS: Record<number, { canonical: string; alias?: string }> = {
+  1: { canonical: 'naranja' },
+  2: { canonical: 'tutorias' },
+  3: { canonical: '25' },
+  4: { canonical: '40', alias: 'cuarenta' },
+  5: { canonical: 'final' },
+  6: { canonical: 'exito' },
+}
+
 let worker: Unstable_DevWorker
 
 function applyMigrationsAndSeed() {
@@ -59,6 +68,10 @@ function applyMigrationsAndSeed() {
   )
   execSync(
     `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0002_walking_skeleton.sql`,
+    opts
+  )
+  execSync(
+    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0003_question_pools.sql`,
     opts
   )
 
@@ -254,7 +267,7 @@ describe('Challenge unlock gate', () => {
     const cookie2 = await setupSession('Pedro2')
 
     // Attempt to answer before scanning
-    const res = await submitAnswer(challengeId, 'naranja', cookie2)
+    const res = await submitAnswer(challengeId, DEMO_ANSWERS[challengeId].canonical, cookie2)
     expect(res.status).toBe(403)
     const body = await res.json() as { error: string }
     expect(body.error).toBe('CHALLENGE_NOT_UNLOCKED')
@@ -351,7 +364,7 @@ describe('Answer submission', () => {
   it('correct answer advances to step 2 and returns ADVANCED', async () => {
     const { cookie, challengeId } = await setupWithChallengeA()
 
-    const res = await submitAnswer(challengeId, 'naranja', cookie)
+    const res = await submitAnswer(challengeId, DEMO_ANSWERS[challengeId].canonical, cookie)
     const body = await res.json() as { state: string; stepNumber: number; clue: string }
     expect(body.state).toBe('ADVANCED')
     expect(body.stepNumber).toBe(2)
@@ -360,7 +373,7 @@ describe('Answer submission', () => {
 
   it('correct answer advances exactly one step (no double-advance)', async () => {
     const { cookie, challengeId } = await setupWithChallengeA()
-    await submitAnswer(challengeId, 'naranja', cookie)
+    await submitAnswer(challengeId, DEMO_ANSWERS[challengeId].canonical, cookie)
 
     const stateRes = await getGameState(cookie)
     const body = await stateRes.json() as { state: string; stepNumber: number }
@@ -370,10 +383,10 @@ describe('Answer submission', () => {
 
   it('replay of step-1 challengeId after advancing is rejected', async () => {
     const { cookie, challengeId } = await setupWithChallengeA()
-    await submitAnswer(challengeId, 'naranja', cookie) // advance to step 2
+    await submitAnswer(challengeId, DEMO_ANSWERS[challengeId].canonical, cookie) // advance to step 2
 
     // Replay old challenge ID → should be 403 CHALLENGE_NOT_CURRENT or CHALLENGE_NOT_UNLOCKED
-    const replayRes = await submitAnswer(challengeId, 'naranja', cookie)
+    const replayRes = await submitAnswer(challengeId, DEMO_ANSWERS[challengeId].canonical, cookie)
     expect([403]).toContain(replayRes.status)
     const body = await replayRes.json() as { error: string }
     expect(['CHALLENGE_NOT_CURRENT', 'CHALLENGE_NOT_UNLOCKED']).toContain(body.error)
@@ -391,13 +404,13 @@ describe('Full game completion', () => {
     // Step 2: scan A, answer correctly
     const scanA = await scan(TOKEN_A, cookie)
     const { challengeId: cA } = await scanA.json() as { challengeId: number }
-    await submitAnswer(cA, 'naranja', cookie)
+    await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
     // Step 3: scan B, answer correctly
     const scanB = await scan(TOKEN_B, cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
 
-    const finalRes = await submitAnswer(cB, '40', cookie)
+    const finalRes = await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
     const body = await finalRes.json() as { state: string; playerName: string; completedAt: string }
     expect(body.state).toBe('COMPLETED')
     expect(body.playerName).toBe('Valentina')
@@ -410,11 +423,11 @@ describe('Full game completion', () => {
 
     const scanA = await scan(TOKEN_A, cookie)
     const { challengeId: cA } = await scanA.json() as { challengeId: number }
-    await submitAnswer(cA, 'naranja', cookie)
+    await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
     const scanB = await scan(TOKEN_B, cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
-    await submitAnswer(cB, '40', cookie)
+    await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
 
     // Refresh
     const stateRes = await getGameState(cookie)
@@ -428,11 +441,11 @@ describe('Full game completion', () => {
 
     const scanA = await scan(TOKEN_A, cookie)
     const { challengeId: cA } = await scanA.json() as { challengeId: number }
-    await submitAnswer(cA, 'naranja', cookie)
+    await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
     const scanB = await scan(TOKEN_B, cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
-    await submitAnswer(cB, '40', cookie)
+    await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
 
     // Try to scan A again after completion
     const reScanRes = await scan(TOKEN_A, cookie)
@@ -440,18 +453,23 @@ describe('Full game completion', () => {
     expect(body.state).toBe('COMPLETED')
   })
 
-  it('alias "cuarenta" is accepted for challenge B', async () => {
+  it('correct answer (or alias) is accepted for challenge B', async () => {
     const startRes = await startSession('Nicolás', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
+    const scanARes = await worker.fetch(`/api/scan/${TOKEN_A}`, { method: 'POST', headers: { cookie } })
+    const resBody = await scanARes.json() as any
+    const { challengeId: cA } = resBody
 
-    const scanA = await scan(TOKEN_A, cookie)
-    const { challengeId: cA } = await scanA.json() as { challengeId: number }
-    await submitAnswer(cA, 'naranja', cookie)
+    await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
-    const scanB = await scan(TOKEN_B, cookie)
+    const scanB = await worker.fetch(`/api/scan/${TOKEN_B}`, {
+      method: 'POST',
+      headers: { cookie },
+    })
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
 
-    const res = await submitAnswer(cB, 'cuarenta', cookie) // alias
+    const answerToSubmit = DEMO_ANSWERS[cB].alias || DEMO_ANSWERS[cB].canonical
+    const res = await submitAnswer(cB, answerToSubmit, cookie)
     const body = await res.json() as { state: string }
     expect(body.state).toBe('COMPLETED')
   })

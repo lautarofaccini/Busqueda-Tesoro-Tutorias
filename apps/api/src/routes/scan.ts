@@ -34,6 +34,9 @@ import {
   getRouteStep,
   logScanEvent,
   unlockStep,
+  getAssignedChallenge,
+  getRandomActiveChallengeForCheckpoint,
+  assignChallenge,
 } from '../db/queries.js'
 import { getSessionToken, buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
@@ -164,7 +167,16 @@ scanRoutes.post('/:token', async (c) => {
     return c.json(state)
   }
 
-  // First scan of this checkpoint — unlock the challenge
+  // First scan of this checkpoint — assign a question pool challenge and unlock
+  let challenge = await getAssignedChallenge(c.env.DB, session.id, session.current_step)
+  if (!challenge) {
+    challenge = await getRandomActiveChallengeForCheckpoint(c.env.DB, checkpoint.id)
+    if (!challenge) {
+      return c.json({ error: 'NO_ACTIVE_CHALLENGES_AVAILABLE' }, 500)
+    }
+    await assignChallenge(c.env.DB, session.id, session.current_step, challenge.id)
+  }
+
   await unlockStep(c.env.DB, session.id, session.current_step)
   await logScanEvent(c.env.DB, {
     sessionId: session.id,
