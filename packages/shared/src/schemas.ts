@@ -12,6 +12,8 @@ export const playerNameSchema = z
 // actually reached the physical Tutorías start QR.
 export const sessionStartSchema = z.object({
   playerName: playerNameSchema,
+  identifierType: z.enum(['LEGAJO', 'DNI']),
+  identifierValue: z.string().min(1, 'La identificación no puede estar vacía.'),
   /** Opaque token from the start checkpoint QR. Server validates this. */
   startToken: z.string().min(1),
 })

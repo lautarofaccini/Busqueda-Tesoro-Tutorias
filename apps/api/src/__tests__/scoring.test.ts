@@ -19,6 +19,7 @@ function applyMigrationsAndSeed() {
     'migrations/0002_walking_skeleton.sql',
     'migrations/0003_question_pools.sql',
     'migrations/0004_event_admin.sql',
+    'migrations/0005_participants_session_order.sql',
     'migrations/test_seed.sql'
   ]
   for (const file of migrations) {
@@ -32,6 +33,8 @@ let cookieAuth: string
 const TOKEN_START = 'h7Xm2pL9qR3wK8nT'
 const TOKEN_A = 'v4Nj6dF1mQ5yW2bG'
 const TOKEN_B = 's9Kp8eA3cZ7xR4nL'
+const TOKEN_C = 'j2Ym5cN8qW4vH7rT'
+const TOKEN_D = 'f6Xj9kL2pM5yR3bN'
 
 const DEMO_ANSWERS: Record<number, { canonical: string; wrong: string }> = {
   1: { canonical: 'naranja', wrong: 'rojo' },
@@ -47,13 +50,26 @@ async function play(playerName: string, wrongCountA: number, wrongCountB: number
   let res = await worker.fetch('/api/session/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerName, startToken: TOKEN_START })
+    body: JSON.stringify({ playerName, identifierType: 'LEGAJO', identifierValue: playerName + Math.floor(Math.random() * 10000), startToken: TOKEN_START })
   })
   const cookie = res.headers.get('set-cookie')?.split(';')[0]!
 
   // Step 1
-  res = await worker.fetch(`/api/scan/${TOKEN_A}`, { method: 'POST', headers: { cookie } })
-  let { challengeId } = await res.json() as any
+
+  const tokens = [TOKEN_A, TOKEN_B, TOKEN_C, TOKEN_D];
+  let scanRes, b;
+  let currentToken;
+  for (const t of tokens) {
+    scanRes = await worker.fetch(`/api/scan/${t}`, { method: 'POST', headers: { cookie } });
+    b = await scanRes.json();
+    if (b.state === 'CHALLENGE') {
+      currentToken = t;
+      break;
+    }
+  }
+  if (b.state !== 'CHALLENGE') throw new Error('Step 1 failed to unlock: ' + JSON.stringify(b));
+  let challengeId = b.challengeId;
+
   for (let i = 0; i < wrongCountA; i++) {
     await worker.fetch(`/api/challenge/${challengeId}/answer`, {
       method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
@@ -71,8 +87,17 @@ async function play(playerName: string, wrongCountA: number, wrongCountB: number
   })
 
   // Step 2
-  res = await worker.fetch(`/api/scan/${TOKEN_B}`, { method: 'POST', headers: { cookie } })
-  challengeId = (await res.json() as any).challengeId
+  let scanRes2;
+  for (const t of tokens) {
+    if (t === currentToken) continue;
+    scanRes2 = await worker.fetch(`/api/scan/${t}`, { method: 'POST', headers: { cookie } });
+    b = await scanRes2.json();
+    if (b.state === 'CHALLENGE') {
+      break;
+    }
+  }
+  if (b.state !== 'CHALLENGE') throw new Error('Step 2 failed to unlock: ' + JSON.stringify(b));
+  challengeId = b.challengeId;
   for (let i = 0; i < wrongCountB; i++) {
     await worker.fetch(`/api/challenge/${challengeId}/answer`, {
       method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
@@ -120,7 +145,7 @@ describe('Scoring & Ranking Rules', () => {
     await worker.fetch('/api/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName: 'Player D', startToken: TOKEN_START })
+      body: JSON.stringify({ playerName: 'Player D', identifierType: 'LEGAJO', identifierValue: 'Player D ' + Math.floor(Math.random() * 10000), startToken: TOKEN_START })
     })
 
     // Play one that goes negative to verify floor

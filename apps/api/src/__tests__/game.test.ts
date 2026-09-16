@@ -41,6 +41,8 @@ const TEST_PERSIST = join(API_ROOT, '.wrangler', 'test-state')
 const TOKEN_START = 'h7Xm2pL9qR3wK8nT'
 const TOKEN_A = 'v4Nj6dF1mQ5yW2bG'
 const TOKEN_B = 's9Kp8eA3cZ7xR4nL'
+const TOKEN_C = 'j2Ym5cN8qW4vH7rT'
+const TOKEN_D = 'f6Xj9kL2pM5yR3bN'
 const TOKEN_UNKNOWN = 'XXXXXXXXXXXXXXXX'
 
 const DEMO_ANSWERS: Record<number, { canonical: string; alias?: string }> = {
@@ -78,6 +80,10 @@ function applyMigrationsAndSeed() {
     `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0004_event_admin.sql`,
     opts
   )
+  execSync(
+    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0005_participants_session_order.sql`,
+    opts
+  )
 
   // Apply seed
   execSync(
@@ -113,6 +119,20 @@ afterAll(async () => {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+
+async function scanNext(cookie: string) {
+  const tokens = [TOKEN_A, TOKEN_B, TOKEN_C, TOKEN_D];
+  for (const t of tokens) {
+    const res = await scan(t, cookie);
+    const body = await res.clone().json();
+    if (body.state === 'CHALLENGE') {
+      res.tokenUsed = t;
+      return res;
+    }
+  }
+  throw new Error("No checkpoint worked");
+}
+
 async function scan(token: string, cookieHeader?: string) {
   return worker.fetch(`/api/scan/${token}`, {
     method: 'POST',
@@ -124,12 +144,17 @@ async function scan(token: string, cookieHeader?: string) {
 }
 
 async function startSession(playerName: string, startToken: string) {
-  return worker.fetch('/api/session/start', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerName, startToken }),
-  })
-}
+    let suffix = Math.floor(Math.random() * 10000).toString();
+    const res = await worker.fetch('/api/session/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName, identifierType: 'LEGAJO', identifierValue: playerName + suffix, startToken }),
+    });
+    if (res.status >= 400) {
+      console.error("START SESSION FAILED", await res.clone().text());
+    }
+    return res;
+  }
 
 async function submitAnswer(challengeId: number, answer: string, cookieHeader: string) {
   return worker.fetch(`/api/challenge/${challengeId}/answer`, {
@@ -242,7 +267,7 @@ describe('POST /api/session/start', () => {
     expect(startState.state).toBe('ACTIVE') // not CHALLENGE — start QR is not a challenge step
 
     // Demo A IS step 1
-    const scanA = await scan(TOKEN_A, cookie)
+    const scanA = await scanNext(cookie)
     const bodyA = await scanA.json() as { state: string; stepNumber: number }
     expect(bodyA.state).toBe('CHALLENGE')
     expect(bodyA.stepNumber).toBe(1)
@@ -264,7 +289,7 @@ describe('Challenge unlock gate', () => {
 
     // Try to answer challenge 1 without scanning checkpoint A first
     // We need the challenge ID — get it by scanning A
-    const scanARes = await scan(TOKEN_A, cookie)
+    const scanARes = await scanNext(cookie)
     const { challengeId } = await scanARes.json() as { challengeId: number }
 
     // Reset: start a fresh session
@@ -279,7 +304,7 @@ describe('Challenge unlock gate', () => {
 
   it('scanning expected checkpoint unlocks challenge', async () => {
     const cookie = await setupSession('María')
-    const scanRes = await scan(TOKEN_A, cookie)
+    const scanRes = await scanNext(cookie)
     const body = await scanRes.json() as { state: string; challengeId: number; question: string }
     expect(body.state).toBe('CHALLENGE')
     expect(typeof body.challengeId).toBe('number')
@@ -289,7 +314,7 @@ describe('Challenge unlock gate', () => {
 
   it('refresh after scanning returns same CHALLENGE (restore state)', async () => {
     const cookie = await setupSession('Luis')
-    await scan(TOKEN_A, cookie) // unlock challenge
+    await scanNext(cookie) // unlock challenge
 
     const stateRes = await getGameState(cookie)
     const body = await stateRes.json() as { state: string; challengeId: number }
@@ -299,10 +324,9 @@ describe('Challenge unlock gate', () => {
 
   it('rescanning same checkpoint returns same CHALLENGE (idempotent)', async () => {
     const cookie = await setupSession('Marta')
-    const scan1 = await scan(TOKEN_A, cookie)
-    const body1 = await scan1.json() as { state: string; challengeId: number }
-
-    const scan2 = await scan(TOKEN_A, cookie)
+    const scan1 = await scanNext(cookie)
+    const body1 = await scan1.clone().json() as { state: string; challengeId: number, token: string }
+    const scan2 = await scan((scan1 as any).tokenUsed, cookie);
     const body2 = await scan2.json() as { state: string; challengeId: number }
 
     expect(body1.state).toBe('CHALLENGE')
@@ -319,7 +343,18 @@ describe('Wrong checkpoint', () => {
     const cookie = extractSessionCookie(getCookieFromResponse(res)!)
 
     // Player at step 1 (expects A), scans B instead
-    const wrongRes = await scan(TOKEN_B, cookie)
+    
+    let wrongToken = TOKEN_A;
+    const tokens = [TOKEN_A, TOKEN_B, TOKEN_C, TOKEN_D];
+    // Find the right one first without scanning
+    // Actually we can just scan them all until one is wrong
+    let wrongRes;
+    for (const t of tokens) {
+      wrongRes = await scan(t, cookie);
+      const b = await wrongRes.clone().json();
+      if (b.state === 'WRONG_CHECKPOINT') break;
+    }
+  
     expect(wrongRes.status).toBe(200)
     const body = await wrongRes.json() as Record<string, unknown>
     expect(body['state']).toBe('WRONG_CHECKPOINT')
@@ -340,7 +375,7 @@ describe('Answer submission', () => {
   async function setupWithChallengeA() {
     const res = await startSession('Sofia', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(res)!)
-    const scanRes = await scan(TOKEN_A, cookie)
+    const scanRes = await scanNext(cookie)
     const { challengeId } = await scanRes.json() as { challengeId: number }
     return { cookie, challengeId }
   }
@@ -406,12 +441,12 @@ describe('Full game completion', () => {
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
 
     // Step 2: scan A, answer correctly
-    const scanA = await scan(TOKEN_A, cookie)
+    const scanA = await scanNext(cookie)
     const { challengeId: cA } = await scanA.json() as { challengeId: number }
     await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
     // Step 3: scan B, answer correctly
-    const scanB = await scan(TOKEN_B, cookie)
+    const scanB = await scanNext(cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
 
     const finalRes = await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
@@ -425,11 +460,11 @@ describe('Full game completion', () => {
     const startRes = await startSession('Roberto', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
 
-    const scanA = await scan(TOKEN_A, cookie)
+    const scanA = await scanNext(cookie)
     const { challengeId: cA } = await scanA.json() as { challengeId: number }
     await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
-    const scanB = await scan(TOKEN_B, cookie)
+    const scanB = await scanNext(cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
     await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
 
@@ -443,11 +478,11 @@ describe('Full game completion', () => {
     const startRes = await startSession('Elena', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
 
-    const scanA = await scan(TOKEN_A, cookie)
+    const scanA = await scanNext(cookie)
     const { challengeId: cA } = await scanA.json() as { challengeId: number }
     await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
-    const scanB = await scan(TOKEN_B, cookie)
+    const scanB = await scanNext(cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
     await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
 
@@ -486,7 +521,7 @@ describe('Security contracts', () => {
     const startRes = await startSession('Security1', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
 
-    const scanRes = await scan(TOKEN_A, cookie)
+    const scanRes = await scanNext(cookie)
     const body = await scanRes.json() as Record<string, unknown>
     expect(body['state']).toBe('CHALLENGE')
 
@@ -500,7 +535,7 @@ describe('Security contracts', () => {
     const startRes = await startSession('Security2', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
 
-    const scanRes = await scan(TOKEN_A, cookie)
+    const scanRes = await scanNext(cookie)
     const body = await scanRes.json() as Record<string, unknown>
     
     // Check that we aren't leaking the answer array/object in the response

@@ -45,8 +45,11 @@ organizerRoutes.get('/results', async (c) => {
   let completedSessions = 0
 
   const players = rawResults.map((r: any) => {
-    if (r.status === 'completed') completedSessions++
-    else if (r.status === 'active') activeSessions++
+    // If invalidated, we don't count it towards competitive totals in the same way, but let's include it for the admin UI to see.
+    if (!r.invalidatedAt) {
+      if (r.status === 'completed') completedSessions++
+      else if (r.status === 'active') activeSessions++
+    }
 
     // Only compute score if completed
     let score = null
@@ -59,16 +62,18 @@ organizerRoutes.get('/results', async (c) => {
       const end = new Date(r.completedAt).getTime()
       durationSec = Math.floor((end - start) / 1000)
       
-      // Suspicious duration: < 5 minutes (300 seconds) for a full hunt
-      // This is configurable conceptually, for now hardcoded threshold
       if (durationSec < 300) {
         needsReview = true
       }
     }
 
     return {
-      id: r.id,
+      id: r.id, // Session ID
+      participantId: r.participantId,
       playerName: r.playerName,
+      identifierType: r.identifierType,
+      identifierSuffix: r.identifierSuffix,
+      invalidatedAt: r.invalidatedAt,
       status: r.status,
       currentStep: r.currentStep,
       totalSteps: r.totalSteps,
@@ -88,7 +93,7 @@ organizerRoutes.get('/results', async (c) => {
   // Only completed sessions get a rank
   
   const completed = players
-    .filter(p => p.status === 'completed')
+    .filter(p => p.status === 'completed' && !p.invalidatedAt)
     .map(p => ({ ...p, rank: 0 }))
     
   // Sort descending by score

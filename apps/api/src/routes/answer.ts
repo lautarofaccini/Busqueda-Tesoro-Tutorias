@@ -25,12 +25,12 @@ import { answerSubmitSchema, matchesAcceptedAnswers } from '@busqueda-tesoro/sha
 import type { Env } from '../env.d'
 import {
   getActiveSession,
-  getRouteStep,
+  getSessionStep,
   getAssignedChallenge,
   logAnswerAttempt,
   advanceStep,
   completeSession,
-  getRouteTotalSteps,
+  getSessionTotalSteps,
   getEventSettings,
 } from '../db/queries.js'
 import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
@@ -96,7 +96,7 @@ answerRoutes.post(
       correct: isCorrect,
     })
 
-    const totalSteps = await getRouteTotalSteps(c.env.DB, session.route_id)
+    const totalSteps = await getSessionTotalSteps(c.env.DB, session.id)
 
     if (!isCorrect) {
       // No advancement, unlock preserved

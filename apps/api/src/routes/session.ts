@@ -25,6 +25,8 @@ import {
   createSession,
   logScanEvent,
   getEventSettings,
+  findParticipant,
+  createParticipant
 } from '../db/queries.js'
 import { buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
@@ -39,7 +41,7 @@ sessionRoutes.post(
     }
   }),
   async (c) => {
-    const { playerName, startToken } = c.req.valid('json')
+    const { playerName, identifierType, identifierValue, startToken } = c.req.valid('json')
     
     // Check event lifecycle
     const settings = await getEventSettings(c.env.DB)
@@ -59,16 +61,45 @@ sessionRoutes.post(
       return c.json({ error: 'INVALID_START_TOKEN' }, 400)
     }
 
-    const route = await getRandomActiveRoute(c.env.DB)
-    if (!route) {
-      return c.json({ error: 'NO_ROUTE_CONFIGURED' }, 500)
+    // Normalize and hash identifier
+    const normalizedId = identifierValue.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    if (!normalizedId) return c.json({ error: 'INVALID_IDENTIFIER' }, 400)
+    
+    const encoder = new TextEncoder()
+    const keyData = encoder.encode(c.env.PARTICIPANT_ID_SECRET)
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const hashBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(normalizedId))
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    const identifierHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    
+    const identifierSuffix = normalizedId.slice(-3).padStart(3, '*')
+
+    let participant = await findParticipant(c.env.DB, identifierType, identifierHash)
+    if (participant) {
+      if (participant.invalidated_at) {
+        // Can participate again
+      } else {
+        // Check if they have an active session
+        const existingSessionRes = await c.env.DB.prepare('SELECT id FROM sessions WHERE participant_id = ? AND status != \'abandoned\'').bind(participant.id).first()
+        if (existingSessionRes) {
+          return c.json({ error: 'DUPLICATE_PARTICIPATION' }, 403)
+        }
+      }
+    } else {
+      const pId = await createParticipant(c.env.DB, {
+        displayName: playerName.trim(),
+        identifierType,
+        identifierHash,
+        identifierSuffix
+      })
+      participant = { id: pId }
     }
 
     const sessionToken = crypto.randomUUID()
     const sessionId = await createSession(c.env.DB, {
       sessionToken,
       playerName: playerName.trim(),
-      routeId: route.id,
+      participantId: participant.id,
     })
 
     await logScanEvent(c.env.DB, {
@@ -87,7 +118,7 @@ sessionRoutes.post(
       id: sessionId,
       session_token: sessionToken,
       player_name: playerName.trim(),
-      route_id: route.id,
+      route_id: 1, // Fallback for types if needed, but not actually used by game state queries
       current_step: 1,
       status: 'active',
       unlocked_step: null,

@@ -97,29 +97,29 @@ export async function getActiveSession(
   return result ?? null
 }
 
-/** Get a route step by route + position. */
-export async function getRouteStep(
+/** Get a route step by session + position. */
+export async function getSessionStep(
   db: D1Database,
-  routeId: number,
+  sessionId: number,
   position: number
 ): Promise<RouteStepRow | null> {
   const result = await db
     .prepare(
-      'SELECT id, route_id, position, checkpoint_id, clue_text FROM route_steps WHERE route_id = ? AND position = ?'
+      'SELECT id, session_id as route_id, position, checkpoint_id, (SELECT label FROM checkpoints WHERE id = session_steps.checkpoint_id) as clue_text FROM session_steps WHERE session_id = ? AND position = ?'
     )
-    .bind(routeId, position)
+    .bind(sessionId, position)
     .first<RouteStepRow>()
   return result ?? null
 }
 
-/** Get the total number of steps in a route. */
-export async function getRouteTotalSteps(
+/** Get the total number of steps in a session. */
+export async function getSessionTotalSteps(
   db: D1Database,
-  routeId: number
+  sessionId: number
 ): Promise<number> {
   const result = await db
-    .prepare('SELECT COUNT(*) as cnt FROM route_steps WHERE route_id = ?')
-    .bind(routeId)
+    .prepare('SELECT COUNT(*) as cnt FROM session_steps WHERE session_id = ?')
+    .bind(sessionId)
     .first<{ cnt: number }>()
   return result?.cnt ?? 0
 }
@@ -217,17 +217,38 @@ export async function createSession(
   opts: {
     sessionToken: string
     playerName: string
-    routeId: number
+    participantId: number
   }
 ): Promise<number> {
   const result = await db
     .prepare(
-      `INSERT INTO sessions (session_token, player_name, route_id, current_step, status, unlocked_step)
-       VALUES (?, ?, ?, 1, 'active', NULL)`
+      `INSERT INTO sessions (session_token, player_name, route_id, current_step, status, unlocked_step, participant_id)
+       VALUES (?, ?, 1, 1, 'active', NULL, ?)`
     )
-    .bind(opts.sessionToken, opts.playerName, opts.routeId)
-    .run()
-  return result.meta.last_row_id as number
+    .bind(opts.sessionToken, opts.playerName, opts.participantId)
+    .run();
+  
+  const sessionId = result.meta.last_row_id as number;
+  
+  // Create randomized session_steps
+  // 1. Get all active checkpoints (except start)
+  const checkpoints = await db.prepare('SELECT id FROM checkpoints WHERE active = 1 AND is_start = 0').all();
+  const cids = (checkpoints.results || []).map((r: any) => r.id);
+  
+  // 2. Shuffle
+  for (let i = cids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cids[i], cids[j]] = [cids[j], cids[i]];
+  }
+  
+  // 3. Insert session_steps
+  for (let i = 0; i < cids.length; i++) {
+    await db.prepare('INSERT INTO session_steps (session_id, position, checkpoint_id) VALUES (?, ?, ?)')
+      .bind(sessionId, i + 1, cids[i])
+      .run();
+  }
+
+  return sessionId;
 }
 
 /**
@@ -315,18 +336,47 @@ export async function getOrganizerResults(db: D1Database) {
   const result = await db.prepare(`
     SELECT 
       s.id, 
-      s.player_name as playerName, 
+      p.id as participantId,
+      p.display_name as playerName,
+      p.identifier_type as identifierType,
+      p.identifier_suffix as identifierSuffix,
+      p.invalidated_at as invalidatedAt,
       s.status, 
       s.current_step as currentStep,
       s.started_at as startedAt, 
       s.completed_at as completedAt,
-      s.route_id as routeId,
-      (SELECT COUNT(*) FROM route_steps WHERE route_id = s.route_id) as totalSteps,
+      (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
       IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount
     FROM sessions s
+    JOIN participants p ON s.participant_id = p.id
     LEFT JOIN answer_attempts a ON s.id = a.session_id
     GROUP BY s.id
   `).all()
   return result.results
+}
+
+/** Create or get a participant. */
+export async function findParticipant(
+  db: D1Database,
+  identifierType: string,
+  identifierHash: string
+): Promise<any | null> {
+  const res = await db.prepare('SELECT * FROM participants WHERE identifier_type = ? AND identifier_hash = ?').bind(identifierType, identifierHash).first();
+  return res ?? null;
+}
+
+export async function createParticipant(
+  db: D1Database,
+  opts: {
+    displayName: string
+    identifierType: string
+    identifierHash: string
+    identifierSuffix: string
+  }
+): Promise<number> {
+  const result = await db.prepare(
+    'INSERT INTO participants (display_name, identifier_type, identifier_hash, identifier_suffix) VALUES (?, ?, ?, ?)'
+  ).bind(opts.displayName, opts.identifierType, opts.identifierHash, opts.identifierSuffix).run();
+  return result.meta.last_row_id as number;
 }

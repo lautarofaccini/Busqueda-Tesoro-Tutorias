@@ -17,8 +17,8 @@ import type { GameState } from '@busqueda-tesoro/shared'
 import type { SessionRow } from '../db/queries.js'
 import {
   getAssignedChallenge,
-  getRouteStep,
-  getRouteTotalSteps,
+  getSessionStep,
+  getSessionTotalSteps,
 } from '../db/queries.js'
 
 export async function buildGameState(
@@ -33,11 +33,11 @@ export async function buildGameState(
     }
   }
 
-  const totalSteps = await getRouteTotalSteps(db, session.route_id)
+  const totalSteps = await getSessionTotalSteps(db, session.id)
 
   // Challenge is active when unlocked_step equals current_step.
   if (session.unlocked_step === session.current_step) {
-    const step = await getRouteStep(db, session.route_id, session.current_step)
+    const step = await getSessionStep(db, session.id, session.current_step)
     if (!step) return { state: 'NEEDS_START' }
 
     const challenge = await getAssignedChallenge(db, session.id, session.current_step)
@@ -55,7 +55,7 @@ export async function buildGameState(
   }
 
   // Player is travelling to next checkpoint — return the clue.
-  const step = await getRouteStep(db, session.route_id, session.current_step)
+  const step = await getSessionStep(db, session.id, session.current_step)
   if (!step) return { state: 'NEEDS_START' }
 
   return {

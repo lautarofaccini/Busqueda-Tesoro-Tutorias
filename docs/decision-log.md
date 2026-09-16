@@ -55,3 +55,19 @@
 **Unresolved product decisions**
 - *Reason:* Final values for questions/routes, hint mechanics (if any), and printed QR logistics are still pending.
 - *Status:* UNRESOLVED.
+
+**Dynamic randomized sequence per session**
+- *Reason:* Replaced global hardcoded routes with \session_steps\ to ensure each player receives a unique, randomized path through all active checkpoints, reducing bottlenecks and tailgating.
+- *Status:* Accepted.
+
+**Identity Verification (Legajo/DNI) with HMAC**
+- *Reason:* Collects Legajo or DNI at the start to enforce a strict "one participation per person" rule. The identifier is securely hashed on the backend using a secret to prevent data leakage while still blocking duplicates.
+- *Status:* Accepted.
+
+**Invalidation and Release Controls**
+- *Reason:* Gives organizers the power to strike cheaters or release accidentally locked identities without deleting database rows, preserving audit trails.
+- *Status:* Accepted.
+
+**Checkpoint-First Admin UX**
+- *Reason:* A streamlined UI where questions are added/edited directly under their corresponding checkpoint simplifies real-world data entry.
+- *Status:* Accepted.

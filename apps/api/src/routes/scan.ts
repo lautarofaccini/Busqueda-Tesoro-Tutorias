@@ -31,7 +31,7 @@ import type { Env } from '../env.d'
 import {
   getCheckpointByToken,
   getAnySession,
-  getRouteStep,
+  getSessionStep,
   logScanEvent,
   unlockStep,
   getAssignedChallenge,
@@ -143,7 +143,7 @@ scanRoutes.post('/:token', async (c) => {
   }
 
   // 6. Check expected checkpoint
-  const expectedStep = await getRouteStep(c.env.DB, session.route_id, session.current_step)
+  const expectedStep = await getSessionStep(c.env.DB, session.id, session.current_step)
   if (!expectedStep) {
     return c.json({ error: 'ROUTE_ERROR' }, 500)
   }

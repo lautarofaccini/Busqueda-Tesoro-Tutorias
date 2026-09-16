@@ -164,3 +164,36 @@ adminRoutes.put('/routes/:id', zValidator('json', routeSchema), async (c) => {
   
   return c.json({ success: true })
 })
+
+
+adminRoutes.post('/reset', async (c) => {
+  // Hard delete participant-generated data
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM scan_events'),
+    c.env.DB.prepare('DELETE FROM answer_attempts'),
+    c.env.DB.prepare('DELETE FROM session_challenge_assignments'),
+    c.env.DB.prepare('DELETE FROM session_steps'),
+    c.env.DB.prepare('DELETE FROM sessions'),
+    c.env.DB.prepare('DELETE FROM participants'),
+    // Reset event status to DRAFT
+    c.env.DB.prepare("UPDATE event_settings SET status = 'DRAFT'")
+  ])
+  return c.json({ success: true })
+})
+
+adminRoutes.post('/participants/:id/invalidate', zValidator('json', z.object({ reason: z.string() })), async (c) => {
+  const id = parseInt(c.req.param('id'))
+  const { reason } = c.req.valid('json')
+  await c.env.DB.prepare(
+    "UPDATE participants SET invalidated_at = datetime('now'), invalidation_reason = ? WHERE id = ?"
+  ).bind(reason, id).run()
+  return c.json({ success: true })
+})
+
+adminRoutes.post('/participants/:id/release', async (c) => {
+  const id = parseInt(c.req.param('id'))
+  await c.env.DB.prepare(
+    "UPDATE participants SET invalidated_at = NULL, invalidation_reason = NULL WHERE id = ?"
+  ).bind(id).run()
+  return c.json({ success: true })
+})

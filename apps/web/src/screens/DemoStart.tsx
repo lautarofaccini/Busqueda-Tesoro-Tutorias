@@ -13,6 +13,8 @@ import { Button } from '../components/Button'
  */
 export function DemoStart() {
   const [playerName, setPlayerName] = useState('')
+  const [identifierType, setIdentifierType] = useState<'LEGAJO' | 'DNI'>('LEGAJO')
+  const [identifierValue, setIdentifierValue] = useState('')
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -59,28 +61,38 @@ export function DemoStart() {
         {/* Center: Structured input form */}
         <form onSubmit={handleSubmit} className="my-auto py-6 flex flex-col gap-4" noValidate>
           <div className="bg-surface border border-border rounded-xl p-5 shadow-xs flex flex-col gap-4">
+            
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="player-name"
-                className="text-sm font-bold text-foreground flex items-center justify-between"
-              >
-                <span>Tu nombre</span>
-                <span className="text-xs font-mono font-normal text-muted">Requerido</span>
-              </label>
+              <label htmlFor="player-name" className="text-sm font-bold text-foreground">Tu nombre</label>
               <input
                 id="player-name"
                 type="text"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 placeholder="Ingresá tu nombre"
-                autoComplete="given-name"
-                className="w-full min-h-[52px] px-4 py-3 rounded-lg border-2 border-border text-base text-foreground bg-surface-warm placeholder:text-muted/60 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all font-medium"
+                className="w-full min-h-[52px] px-4 rounded-lg border border-border text-base bg-surface-warm"
               />
             </div>
 
-            <Button type="submit" disabled={!playerName.trim()}>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-bold text-foreground">Identificación (Sólo un juego por persona)</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setIdentifierType('LEGAJO')} className={`flex-1 py-2 border rounded ${identifierType === 'LEGAJO' ? 'bg-neutral-800 text-white' : 'bg-surface'}`}>LEGAJO</button>
+                <button type="button" onClick={() => setIdentifierType('DNI')} className={`flex-1 py-2 border rounded ${identifierType === 'DNI' ? 'bg-neutral-800 text-white' : 'bg-surface'}`}>DNI</button>
+              </div>
+              <input
+                type="text"
+                value={identifierValue}
+                onChange={(e) => setIdentifierValue(e.target.value)}
+                placeholder={identifierType === 'LEGAJO' ? 'Número de Legajo' : 'Número de DNI'}
+                className="w-full min-h-[52px] px-4 mt-2 rounded-lg border border-border text-base bg-surface-warm"
+              />
+            </div>
+
+            <Button type="submit" disabled={!playerName.trim() || !identifierValue.trim()}>
               Comenzar
             </Button>
+
           </div>
         </form>
 

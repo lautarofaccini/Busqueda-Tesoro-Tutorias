@@ -50,6 +50,26 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
     setLoading(false)
   }
 
+
+  const handleInvalidar = async (id: number) => {
+    const reason = window.prompt("Motivo de invalidación (ej. Trampa, Múltiples cuentas):")
+    if (!reason) return
+    await fetch(`/api/admin/participants/${id}/invalidate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    })
+    fetchResults()
+  }
+
+  const handleRehabilitar = async (id: number) => {
+    if (!window.confirm("¿Estás seguro de rehabilitar a este participante?")) return
+    await fetch(`/api/admin/participants/${id}/release`, {
+      method: 'POST'
+    })
+    fetchResults()
+  }
+
   if (!isAuthenticated && !isEmbedded) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 font-sans text-neutral-900">
@@ -123,30 +143,55 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
         <div className="bg-white rounded shadow overflow-x-auto mb-8">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-neutral-50 border-b border-neutral-200">
-                <th className="p-3 font-semibold">Pos</th>
-                <th className="p-3 font-semibold">Equipo/Jugador</th>
-                <th className="p-3 font-semibold text-right">Puntaje</th>
-                <th className="p-3 font-semibold text-right">Errores</th>
-                <th className="p-3 font-semibold text-right">Tiempo</th>
+              
+              <tr className="bg-neutral-50 border-b border-neutral-200 text-xs text-neutral-600 uppercase">
+                <th className="p-3 font-bold">Pos</th>
+                <th className="p-3 font-bold">Jugador / Equipo</th>
+                <th className="p-3 font-bold">Identificación</th>
+                <th className="p-3 font-bold text-right">Puntaje</th>
+                <th className="p-3 font-bold text-right">Errores</th>
+                <th className="p-3 font-bold text-right">Tiempo</th>
+                <th className="p-3 font-bold text-right">Acciones</th>
               </tr>
+
             </thead>
             <tbody>
               {data?.ranking.length === 0 ? (
                 <tr><td colSpan={5} className="p-4 text-center text-neutral-500">Nadie ha terminado aún</td></tr>
               ) : (
+                
                 data?.ranking.map((p: any) => (
-                  <tr key={p.id} className="border-b border-neutral-100">
-                    <td className="p-3 font-bold text-neutral-500">{p.rank}</td>
+                  <tr key={p.id} className={`border-b border-neutral-100 ${p.invalidatedAt ? 'bg-red-50 opacity-75' : ''}`}>
+                    <td className="p-3 font-bold text-neutral-500">
+                      {p.invalidatedAt ? (
+                        <span className="text-red-500 text-xs">ANULADO</span>
+                      ) : p.rank === 'EMPATE' ? (
+                        <span className="text-blue-500 text-xs">EMPATE</span>
+                      ) : (
+                        `#${p.rank}`
+                      )}
+                    </td>
                     <td className="p-3 font-medium">
                       {p.playerName}
-                      {p.needsReview && <span className="ml-2 inline-block bg-red-100 text-red-800 text-xs px-2 py-1 rounded">Rápido</span>}
+                      {p.needsReview && !p.invalidatedAt && <span className="ml-2 inline-block bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded font-bold">Rápido</span>}
+                      {p.invalidatedAt && <div className="text-xs text-red-600 mt-1">Motivo: {p.invalidationReason}</div>}
+                    </td>
+                    <td className="p-3 font-mono text-sm text-neutral-600">
+                      {p.identifierType} {p.identifierSuffix}
                     </td>
                     <td className="p-3 text-right font-bold text-orange-600">{p.score}</td>
                     <td className="p-3 text-right text-red-500">{p.wrongCount}</td>
                     <td className="p-3 text-right text-neutral-500 font-mono text-sm">{Math.floor(p.durationSec / 60)}m {p.durationSec % 60}s</td>
+                    <td className="p-3 text-right">
+                      {p.invalidatedAt ? (
+                        <button onClick={() => handleRehabilitar(p.participantId)} className="text-xs bg-neutral-200 hover:bg-neutral-300 px-2 py-1 rounded">Rehabilitar</button>
+                      ) : (
+                        <button onClick={() => handleInvalidar(p.participantId)} className="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded">Invalidar</button>
+                      )}
+                    </td>
                   </tr>
                 ))
+
               )}
             </tbody>
           </table>

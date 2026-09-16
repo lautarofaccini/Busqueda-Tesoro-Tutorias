@@ -20,6 +20,7 @@ function applyMigrationsAndSeed() {
     'migrations/0002_walking_skeleton.sql',
     'migrations/0003_question_pools.sql',
     'migrations/0004_event_admin.sql',
+    'migrations/0005_participants_session_order.sql',
     'migrations/test_seed.sql'
   ]
 
@@ -38,7 +39,8 @@ beforeAll(async () => {
     local: true,
     persistTo: TEST_PERSIST,
     vars: {
-      ORGANIZER_SECRET: 'super_secret'
+      ORGANIZER_SECRET: 'super_secret',
+      PARTICIPANT_ID_SECRET: 'test_secret'
     }
   })
 }, 30000)

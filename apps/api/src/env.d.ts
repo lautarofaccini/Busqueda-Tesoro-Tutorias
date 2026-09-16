@@ -7,5 +7,6 @@
 export interface Env {
   DB: D1Database
   ORGANIZER_SECRET: string
+  PARTICIPANT_ID_SECRET: string
   ENVIRONMENT?: string
 }
