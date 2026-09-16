@@ -1,9 +1,9 @@
 # Current State
 
 - **Current phase:** Part D — Next Steps (Scoring, Camera, Admin UI).
-- **Current stable branch:** main (contains complete Phase 1 Local Walking Skeleton).
-- **Current active feature branch:** feat/question-pools-agent-context
-- **Last verified commit:** 1fe58a9 (Phase 1 completion) + new WIP on current feature branch.
+- **Current stable branch:** main (contains complete Phase 1 Local Walking Skeleton and Question Pools).
+- **Current active feature branch:** main (ready for next feature branch).
+- **Last verified commit:** 6f15d93 (Question pools + agent context completion).
 - **What currently works:** Local Worker API, local D1, Vite proxy, server-side session, HttpOnly cookie, start QR gating, wrong-checkpoint protection, replay protection, persistent randomized question pools per checkpoint, manual end-to-end game flow, Vitest integration testing.
 - **What is being built now:** Preparing for production readiness, final scoring rules, or QR camera integration.
 - **Known limitations:** Winner selection, leaderboard, real UTN FRRe questions/locations, and production Cloudflare deployments are not yet implemented.
