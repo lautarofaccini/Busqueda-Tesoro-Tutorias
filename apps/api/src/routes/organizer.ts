@@ -99,11 +99,14 @@ organizerRoutes.get('/results', async (c) => {
 
   let currentRank = 1
   for (let i = 0; i < completed.length; i++) {
-    if (i > 0 && completed[i].score! === completed[i - 1].score!) {
-      completed[i].rank = currentRank // tie
+    const current = completed[i]!
+    const prev = i > 0 ? completed[i - 1]! : null
+
+    if (prev && current.score === prev.score) {
+      current.rank = currentRank // tie
     } else {
       currentRank = i + 1
-      completed[i].rank = currentRank
+      current.rank = currentRank
     }
   }
 
