@@ -39,7 +39,9 @@ export interface RouteStepRow {
   route_id: number
   position: number
   checkpoint_id: number
-  clue_text: string
+  primary_clue: string
+  secondary_clue: string | null
+  instruction: string | null
 }
 
 export interface ChallengeRow {
@@ -105,7 +107,7 @@ export async function getSessionStep(
 ): Promise<RouteStepRow | null> {
   const result = await db
     .prepare(
-      'SELECT id, session_id as route_id, position, checkpoint_id, (SELECT label FROM checkpoints WHERE id = session_steps.checkpoint_id) as clue_text FROM session_steps WHERE session_id = ? AND position = ?'
+      'SELECT id, session_id as route_id, position, checkpoint_id, (SELECT primary_clue FROM checkpoints WHERE id = session_steps.checkpoint_id) as primary_clue, (SELECT secondary_clue FROM checkpoints WHERE id = session_steps.checkpoint_id) as secondary_clue, (SELECT instruction FROM checkpoints WHERE id = session_steps.checkpoint_id) as instruction FROM session_steps WHERE session_id = ? AND position = ?'
     )
     .bind(sessionId, position)
     .first<RouteStepRow>()
@@ -347,7 +349,8 @@ export async function getOrganizerResults(db: D1Database) {
       s.completed_at as completedAt,
       (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
-      IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount
+      IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount,
+      (SELECT COUNT(*) FROM hint_usage h WHERE h.session_id = s.id) as hintsUsed
     FROM sessions s
     JOIN participants p ON s.participant_id = p.id
     LEFT JOIN answer_attempts a ON s.id = a.session_id
@@ -379,4 +382,14 @@ export async function createParticipant(
     'INSERT INTO participants (display_name, identifier_type, identifier_hash, identifier_suffix) VALUES (?, ?, ?, ?)'
   ).bind(opts.displayName, opts.identifierType, opts.identifierHash, opts.identifierSuffix).run();
   return result.meta.last_row_id as number;
+}
+
+
+export async function hasUsedHint(db: D1Database, sessionId: number, position: number): Promise<boolean> {
+  const row = await db.prepare('SELECT 1 FROM hint_usage WHERE session_id = ? AND step_position = ?').bind(sessionId, position).first();
+  return !!row;
+}
+
+export async function logHintUsage(db: D1Database, sessionId: number, position: number): Promise<void> {
+  await db.prepare('INSERT OR IGNORE INTO hint_usage (session_id, step_position) VALUES (?, ?)').bind(sessionId, position).run();
 }

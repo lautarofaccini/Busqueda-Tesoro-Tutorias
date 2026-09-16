@@ -25,6 +25,9 @@ export interface StateStartAllowed {
 
 /** Session active; player is travelling to the next checkpoint. */
 export interface StateActive {
+  secondaryClue?: string | null
+  hasSecondaryClue?: boolean
+  instruction?: string | null
   state: 'ACTIVE'
   /** Clue text for the current step. Safe to show. */
   clue: string
@@ -65,6 +68,9 @@ export interface StateAnswerIncorrect {
 
 /** Correct answer; route advanced. Contains the next clue. */
 export interface StateAdvanced {
+  secondaryClue?: string | null
+  hasSecondaryClue?: boolean
+  instruction?: string | null
   state: 'ADVANCED'
   clue: string
   stepNumber: number

@@ -71,3 +71,8 @@
 **Checkpoint-First Admin UX**
 - *Reason:* A streamlined UI where questions are added/edited directly under their corresponding checkpoint simplifies real-world data entry.
 - *Status:* Accepted.
+
+**Checkpoint clues and optional notices**
+- *Reason:* A randomized session must reveal only the current destination, while organizers need a clear place to manage its guidance and local conduct notice.
+- *Decision:* Each active non-start checkpoint requires one primary clue; it may have one optional secondary clue and an optional instruction. Secondary-clue use is server-side audited per session step. The configured hint penalty remains unapplied until an explicit scoring decision and test are approved.
+- *Status:* Accepted.

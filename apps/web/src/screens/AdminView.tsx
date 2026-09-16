@@ -70,9 +70,6 @@ export function AdminView() {
     { id: 'resumen', label: 'Resumen' },
     { id: 'evento', label: 'Evento' },
     { id: 'checkpoints', label: 'Checkpoints' },
-    
-    { id: 'rutas', label: 'Rutas' },
-    { id: 'qr', label: 'QR' },
   ]
 
   return (
@@ -100,29 +97,33 @@ export function AdminView() {
       
       <main className="flex-1 p-4 md:p-8 overflow-auto">
         {activeTab === 'resumen' && <OrganizerView isEmbedded />}
-        {activeTab === 'evento' && <EventSettings initialData={eventData} />}
+        {activeTab === 'evento' && <EventSettings initialData={eventData} onSaved={setEventData} />}
         {activeTab === 'checkpoints' && <CheckpointsAdmin />}
-        
-        {activeTab === 'rutas' && <RoutesAdmin />}
-        {activeTab === 'qr' && <QRAdmin />}
       </main>
     </div>
   )
 }
 
-function EventSettings({ initialData }: { initialData: any }) {
+function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (data: any) => void }) {
   const [data, setData] = useState(initialData)
   const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [confirmReset, setConfirmReset] = useState(false)
+
+  useEffect(() => setData(initialData), [initialData])
 
   const save = async () => {
     setSaving(true)
-    await fetch('/api/admin/event', {
+    const response = await fetch('/api/admin/event', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     })
     setSaving(false)
-    alert('Guardado correctamente')
+    if (response.ok) {
+      onSaved(data)
+      setMessage('Cambios guardados.')
+    } else setMessage('No se pudieron guardar los cambios.')
   }
 
   return (
@@ -165,18 +166,17 @@ function EventSettings({ initialData }: { initialData: any }) {
           {saving ? 'Guardando...' : 'Guardar Cambios'}
         </button>
 
-        <button 
-          onClick={async () => {
-            if (window.confirm("¡PELIGRO! Esto borrará TODAS las participaciones, sesiones y resultados de este evento y lo volverá al estado BORRADOR. La configuración de checkpoints y preguntas se mantendrá intacta. ¿Estás absolutamente seguro de REINICIAR EL EVENTO?")) {
-              await fetch('/api/admin/reset', { method: 'POST' })
-              window.location.reload()
-            }
-          }} 
+        <button onClick={() => setConfirmReset(true)}
           className="bg-red-600 text-white px-6 py-2 rounded"
         >
           REINICIAR EVENTO
         </button>
       </div>
+      {message && <p className="mt-4 text-sm text-neutral-600" role="status">{message}</p>}
+      {confirmReset && <div className="mt-5 border border-red-200 bg-red-50 p-4 rounded">
+        <p className="text-sm mb-3">Se eliminarán sesiones, intentos, escaneos, asignaciones y participaciones. El contenido y los QR se conservan.</p>
+        <div className="flex gap-3"><button className="bg-red-700 text-white px-4 py-2 rounded" onClick={async () => { const res = await fetch('/api/admin/reset', { method: 'POST' }); if (res.ok) { const next = { ...data, status: 'DRAFT' }; setData(next); onSaved(next); setMessage('Evento reiniciado en BORRADOR.'); setConfirmReset(false) } }}>Confirmar reinicio</button><button className="border px-4 py-2 rounded" onClick={() => setConfirmReset(false)}>Cancelar</button></div>
+      </div>}
     </div>
   )
 }
@@ -186,6 +186,8 @@ function CheckpointsAdmin() {
   const [checkpoints, setCheckpoints] = useState<any[]>([])
   const [challenges, setChallenges] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newCheckpoint, setNewCheckpoint] = useState({ label: '', primary_clue: '' })
 
   const load = async () => {
     setLoading(true)
@@ -200,15 +202,14 @@ function CheckpointsAdmin() {
 
   useEffect(() => { load() }, [])
 
-  const add = async () => {
-    const label = window.prompt('Nombre del nuevo checkpoint:')
-    if (!label) return
-    await fetch('/api/admin/checkpoints', {
+  const add = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const res = await fetch('/api/admin/checkpoints', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label, is_start: 0, active: 1 })
+      body: JSON.stringify({ label: newCheckpoint.label, primary_clue: newCheckpoint.primary_clue, is_start: 0, active: 1 })
     })
-    load()
+    if (res.ok) { setAdding(false); setNewCheckpoint({ label: '', primary_clue: '' }); load() }
   }
 
   if (loading) return <div>Cargando...</div>
@@ -217,10 +218,16 @@ function CheckpointsAdmin() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Checkpoints y Preguntas</h2>
-        <button onClick={add} className="bg-green-600 text-white px-4 py-2 rounded font-bold">
+        <button onClick={() => setAdding(true)} className="bg-green-600 text-white px-4 py-2 rounded font-bold">
           + Nuevo Checkpoint
         </button>
       </div>
+      {adding && <form onSubmit={add} className="mb-6 bg-white border rounded p-4 flex flex-col gap-3">
+        <h3 className="font-bold">Nuevo checkpoint</h3>
+        <input required className="border p-2 rounded" placeholder="Nombre" value={newCheckpoint.label} onChange={e => setNewCheckpoint({ ...newCheckpoint, label: e.target.value })} />
+        <textarea required className="border p-2 rounded" placeholder="Pista principal" value={newCheckpoint.primary_clue} onChange={e => setNewCheckpoint({ ...newCheckpoint, primary_clue: e.target.value })} />
+        <div className="flex gap-2"><button className="bg-green-600 text-white px-3 py-2 rounded" type="submit">Crear</button><button type="button" className="border px-3 py-2 rounded" onClick={() => setAdding(false)}>Cancelar</button></div>
+      </form>}
       
       <div className="flex flex-col gap-6">
         {checkpoints.map(cp => (
@@ -231,16 +238,30 @@ function CheckpointsAdmin() {
   )
 }
 
+
 function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, challenges: any[], reload: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [editingCP, setEditingCP] = useState(false)
-  const [editCPData, setEditCPData] = useState({ label: checkpoint.label, active: checkpoint.active })
+  const [editCPData, setEditCPData] = useState({
+    label: checkpoint.label,
+    active: checkpoint.active,
+    instruction: checkpoint.instruction || '',
+    primary_clue: checkpoint.primary_clue || '',
+    secondary_clue: checkpoint.secondary_clue || ''
+  })
 
   const saveCP = async () => {
     await fetch(`/api/admin/checkpoints/${checkpoint.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...checkpoint, label: editCPData.label, active: editCPData.active ? 1 : 0 })
+      body: JSON.stringify({
+        ...checkpoint,
+        label: editCPData.label,
+        active: editCPData.active ? 1 : 0,
+        instruction: editCPData.instruction,
+        primary_clue: editCPData.primary_clue,
+        secondary_clue: editCPData.secondary_clue
+      })
     })
     setEditingCP(false)
     reload()
@@ -267,18 +288,7 @@ function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, c
       <div className="p-4 flex items-center justify-between bg-neutral-50 cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-4">
           <span className="font-mono text-sm text-neutral-500">#{checkpoint.id}</span>
-          {editingCP ? (
-            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-              <input type="text" className="border px-2 py-1" value={editCPData.label} onChange={e => setEditCPData({...editCPData, label: e.target.value})} />
-              <button onClick={saveCP} className="bg-blue-600 text-white px-2 py-1 rounded text-sm">Guardar</button>
-              <button onClick={() => {
-                setEditingCP(false)
-                setEditCPData({ label: checkpoint.label, active: checkpoint.active })
-              }} className="text-sm border px-2 py-1 rounded hover:bg-neutral-200">Cancelar</button>
-            </div>
-          ) : (
-            <h3 className="text-lg font-bold">{checkpoint.label}</h3>
-          )}
+          <h3 className="text-lg font-bold">{checkpoint.label}</h3>
           {checkpoint.is_start === 1 && <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-bold">INICIO</span>}
           <span className={`text-xs px-2 py-1 rounded ${checkpoint.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
             {checkpoint.active ? 'Activo' : 'Inactivo'}
@@ -287,7 +297,6 @@ function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, c
         </div>
         
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          <button onClick={() => setEditingCP(true)} className="text-sm bg-neutral-200 px-3 py-1 rounded hover:bg-neutral-300 font-medium">Editar</button>
           <button onClick={regenerateQR} className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 font-medium">Regenerar QR</button>
           <button onClick={toggleActive} className={`text-sm px-3 py-1 rounded text-white font-medium ${checkpoint.active ? 'bg-neutral-500 hover:bg-neutral-600' : 'bg-green-600 hover:bg-green-700'}`}>
             {checkpoint.active ? 'Desactivar' : 'Activar'}
@@ -297,25 +306,83 @@ function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, c
       </div>
 
       {expanded && (
-        <div className="p-4 border-t border-neutral-200 bg-white">
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="font-bold text-neutral-700">Preguntas del Checkpoint</h4>
-            <AddChallengeModal checkpointId={checkpoint.id} reload={reload} />
-          </div>
-          {challenges.length === 0 ? (
-            <p className="text-sm text-neutral-500 italic p-4 bg-neutral-50 rounded border border-dashed text-center">No hay preguntas en este checkpoint.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {challenges.map(ch => (
-                <ChallengeRow key={ch.id} challenge={ch} reload={reload} />
-              ))}
+        <div className="p-4 border-t border-neutral-200 bg-white flex flex-col gap-6">
+          {/* Detalles del Checkpoint */}
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-bold text-neutral-700">Detalles y Pistas</h4>
+              {!editingCP && (
+                <button onClick={() => setEditingCP(true)} className="text-sm bg-neutral-200 px-3 py-1 rounded hover:bg-neutral-300 font-medium">Editar Detalles</button>
+              )}
             </div>
-          )}
+            {editingCP ? (
+              <div className="flex flex-col gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">Nombre</label>
+                  <input className="w-full border p-2 rounded" value={editCPData.label} onChange={e => setEditCPData({...editCPData, label: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">Instrucción Adicional (Opcional - p.ej. Reglas del lugar)</label>
+                  <input className="w-full border p-2 rounded" value={editCPData.instruction} onChange={e => setEditCPData({...editCPData, instruction: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">Pista Principal</label>
+                  <textarea className="w-full border p-2 rounded" value={editCPData.primary_clue} onChange={e => setEditCPData({...editCPData, primary_clue: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">Pista Secundaria (Opcional - Ayuda extra)</label>
+                  <textarea className="w-full border p-2 rounded" value={editCPData.secondary_clue} onChange={e => setEditCPData({...editCPData, secondary_clue: e.target.value})} />
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={saveCP} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Guardar Detalles</button>
+                  <button onClick={() => {
+                    setEditingCP(false)
+                    setEditCPData({ label: checkpoint.label, active: checkpoint.active, instruction: checkpoint.instruction || '', primary_clue: checkpoint.primary_clue || '', secondary_clue: checkpoint.secondary_clue || '' })
+                  }} className="px-4 py-2 text-sm border rounded bg-white font-bold text-neutral-600">Cancelar</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded">
+                <div>
+                  <span className="block text-xs font-bold uppercase text-neutral-500">Instrucción Adicional</span>
+                  <p className="text-sm">{checkpoint.instruction || <span className="text-neutral-400 italic">Ninguna</span>}</p>
+                </div>
+                <div>
+                  <span className="block text-xs font-bold uppercase text-neutral-500">Pista Principal</span>
+                  <p className="text-sm font-medium">{checkpoint.primary_clue || <span className="text-red-400 italic">¡Falta pista principal!</span>}</p>
+                </div>
+                <div>
+                  <span className="block text-xs font-bold uppercase text-neutral-500">Pista Secundaria</span>
+                  <p className="text-sm">{checkpoint.secondary_clue || <span className="text-neutral-400 italic">Ninguna</span>}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <hr className="border-neutral-200" />
+
+          {/* Preguntas */}
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-bold text-neutral-700">Preguntas del Checkpoint</h4>
+              <AddChallengeModal checkpointId={checkpoint.id} reload={reload} />
+            </div>
+            {challenges.length === 0 ? (
+              <p className="text-sm text-neutral-500 italic p-4 bg-neutral-50 rounded border border-dashed text-center">No hay preguntas en este checkpoint.</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {challenges.map(ch => (
+                  <ChallengeRow key={ch.id} challenge={ch} reload={reload} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   )
 }
+
 
 function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => void }) {
   const [editing, setEditing] = useState(false)

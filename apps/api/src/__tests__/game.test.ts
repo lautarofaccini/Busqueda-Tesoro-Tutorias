@@ -84,6 +84,10 @@ function applyMigrationsAndSeed() {
     `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0005_participants_session_order.sql`,
     opts
   )
+  execSync(
+    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0006_checkpoint_clues.sql`,
+    opts
+  )
 
   // Apply seed
   execSync(
@@ -495,16 +499,13 @@ describe('Full game completion', () => {
   it('correct answer (or alias) is accepted for challenge B', async () => {
     const startRes = await startSession('Nicolás', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(startRes)!)
-    const scanARes = await worker.fetch(`/api/scan/${TOKEN_A}`, { method: 'POST', headers: { cookie } })
+    const scanARes = await scanNext(cookie)
     const resBody = await scanARes.json() as any
     const { challengeId: cA } = resBody
 
     await submitAnswer(cA, DEMO_ANSWERS[cA].canonical, cookie)
 
-    const scanB = await worker.fetch(`/api/scan/${TOKEN_B}`, {
-      method: 'POST',
-      headers: { cookie },
-    })
+    const scanB = await scanNext(cookie)
     const { challengeId: cB } = await scanB.json() as { challengeId: number }
 
     const answerToSubmit = DEMO_ANSWERS[cB].alias || DEMO_ANSWERS[cB].canonical

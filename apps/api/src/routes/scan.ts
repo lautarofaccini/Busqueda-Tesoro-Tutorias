@@ -126,6 +126,7 @@ scanRoutes.post('/:token', async (c) => {
   const settings = await getEventSettings(c.env.DB)
   if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
   if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
+  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
 
   // Refresh cookie
   c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))

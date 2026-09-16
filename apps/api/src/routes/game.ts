@@ -9,7 +9,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
-import { getAnySession, getActiveSession, getEventSettings } from '../db/queries.js'
+import { getAnySession, getActiveSession, getEventSettings, logHintUsage, getSessionStep } from '../db/queries.js'
 import { buildGameState } from '../lib/game-state.js'
 
 const gameRoutes = new Hono<{ Bindings: Env }>()
@@ -38,6 +38,44 @@ gameRoutes.get('/state', async (c) => {
   // Refresh cookie lifetime on each page load
   const secure = c.env.ENVIRONMENT === 'production'
   c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
+
+  const state = await buildGameState(c.env.DB, session)
+  return c.json(state)
+})
+
+
+gameRoutes.post('/hint', async (c) => {
+  const cookieHeader = c.req.header('cookie') ?? null
+  const sessionToken = getSessionToken(cookieHeader)
+
+  if (!sessionToken) {
+    return c.json({ state: 'NEEDS_START' })
+  }
+
+  const session = await getAnySession(c.env.DB, sessionToken)
+  if (!session || session.status === 'completed') {
+    return c.json({ error: 'INVALID_SESSION' }, 400)
+  }
+
+  const settings = await getEventSettings(c.env.DB)
+  if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
+  if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
+  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
+
+  // Only allow hint if travelling to a checkpoint (unlocked_step = NULL or not current step)
+  // Actually, wait, if they are AT the checkpoint (CHALLENGE state), the hint is for the QUESTION?
+  // The requirement says: "When the player is travelling to the next checkpoint: show PRIMARY clue. Provide an optional action: 'Ver pista adicional'".
+  // So it's for the clue, not the question!
+  if (session.unlocked_step === session.current_step) {
+    return c.json({ error: 'ALREADY_AT_CHECKPOINT' }, 400)
+  }
+
+  const step = await getSessionStep(c.env.DB, session.id, session.current_step)
+  if (!step || !step.secondary_clue) {
+    return c.json({ error: 'NO_HINT_AVAILABLE' }, 400)
+  }
+
+  await logHintUsage(c.env.DB, session.id, session.current_step)
 
   const state = await buildGameState(c.env.DB, session)
   return c.json(state)

@@ -65,27 +65,33 @@ adminRoutes.get('/checkpoints', async (c) => {
 
 adminRoutes.post('/checkpoints', zValidator('json', checkpointSchema), async (c) => {
   const data = c.req.valid('json')
+  if (data.active && !data.is_start && !data.primary_clue) {
+    return c.json({ error: 'PRIMARY_CLUE_REQUIRED' }, 400)
+  }
   // Cannot have multiple starts
   if (data.is_start) {
     await c.env.DB.prepare('UPDATE checkpoints SET is_start = 0').run()
   }
   const token = crypto.randomUUID()
   const result = await c.env.DB.prepare(`
-    INSERT INTO checkpoints (token, sequence_order, label, is_start, active)
-    VALUES (?, (SELECT COALESCE(MAX(sequence_order),0)+1 FROM checkpoints), ?, ?, ?)
-  `).bind(token, data.label, data.is_start, data.active).run()
+    INSERT INTO checkpoints (token, sequence_order, label, is_start, active, instruction, primary_clue, secondary_clue)
+    VALUES (?, (SELECT COALESCE(MAX(sequence_order),0)+1 FROM checkpoints), ?, ?, ?, ?, ?, ?)
+  `).bind(token, data.label, data.is_start, data.active, data.instruction ?? null, data.primary_clue ?? null, data.secondary_clue ?? null).run()
   return c.json({ id: result.meta.last_row_id })
 })
 
 adminRoutes.put('/checkpoints/:id', zValidator('json', checkpointSchema), async (c) => {
   const id = parseInt(c.req.param('id'))
   const data = c.req.valid('json')
+  if (data.active && !data.is_start && !data.primary_clue) {
+    return c.json({ error: 'PRIMARY_CLUE_REQUIRED' }, 400)
+  }
   if (data.is_start) {
     await c.env.DB.prepare('UPDATE checkpoints SET is_start = 0 WHERE id != ?').bind(id).run()
   }
   await c.env.DB.prepare(`
-    UPDATE checkpoints SET label = ?, is_start = ?, active = ? WHERE id = ?
-  `).bind(data.label, data.is_start, data.active, id).run()
+    UPDATE checkpoints SET label = ?, is_start = ?, active = ?, instruction = ?, primary_clue = ?, secondary_clue = ? WHERE id = ?
+  `).bind(data.label, data.is_start, data.active, data.instruction ?? null, data.primary_clue ?? null, data.secondary_clue ?? null, id).run()
   return c.json({ success: true })
 })
 
@@ -169,6 +175,7 @@ adminRoutes.put('/routes/:id', zValidator('json', routeSchema), async (c) => {
 adminRoutes.post('/reset', async (c) => {
   // Hard delete participant-generated data
   await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM hint_usage'),
     c.env.DB.prepare('DELETE FROM scan_events'),
     c.env.DB.prepare('DELETE FROM answer_attempts'),
     c.env.DB.prepare('DELETE FROM session_challenge_assignments'),

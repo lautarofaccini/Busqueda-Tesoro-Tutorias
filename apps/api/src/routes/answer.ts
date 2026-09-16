@@ -66,9 +66,10 @@ answerRoutes.post(
       return c.json({ error: 'SESSION_NOT_FOUND' }, 401)
     }
 
-    const settings = await getEventSettings(c.env.DB)
-    if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
-    if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
+  const settings = await getEventSettings(c.env.DB)
+  if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
+  if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
+  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
 
     // 2. Challenge must be unlocked (player must have scanned the checkpoint first)
     if (session.unlocked_step !== session.current_step) {

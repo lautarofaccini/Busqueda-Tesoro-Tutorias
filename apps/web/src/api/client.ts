@@ -66,3 +66,7 @@ export async function submitAnswer(
     body: JSON.stringify(data),
   })
 }
+
+export async function revealHint(): Promise<GameState> {
+  return apiFetch<GameState>('/api/game/hint', { method: 'POST' })
+}

@@ -81,6 +81,7 @@ organizerRoutes.get('/results', async (c) => {
       completedAt: r.completedAt,
       correctCount: r.correctCount,
       wrongCount: r.wrongCount,
+      hintsUsed: r.hintsUsed,
       score,
       durationSec,
       needsReview
@@ -94,7 +95,7 @@ organizerRoutes.get('/results', async (c) => {
   
   const completed = players
     .filter(p => p.status === 'completed' && !p.invalidatedAt)
-    .map(p => ({ ...p, rank: 0 }))
+    .map(p => ({ ...p, rank: 0, isTied: false }))
     
   // Sort descending by score
   completed.sort((a, b) => b.score! - a.score!)
@@ -112,7 +113,12 @@ organizerRoutes.get('/results', async (c) => {
     }
   }
 
-  const active = players.filter(p => p.status !== 'completed')
+  for (let i = 0; i < completed.length; i++) {
+    completed[i]!.isTied = completed.some((other, index) => index !== i && other.score === completed[i]!.score)
+  }
+
+  const active = players.filter(p => p.status !== 'completed' && !p.invalidatedAt)
+  const invalidated = players.filter(p => p.invalidatedAt)
   // Display ordering purely, no rank
   active.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
 
@@ -123,6 +129,7 @@ organizerRoutes.get('/results', async (c) => {
       completed: completedSessions
     },
     ranking: completed,
-    active
+    active,
+    invalidated
   })
 })

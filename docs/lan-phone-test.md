@@ -44,3 +44,6 @@ Asegúrate de NO usar `localhost` ni `127.0.0.1`.
   ```bash
   npm run db:reset:local
   ```
+## Pre-phone regression checklist
+
+Use the local Worker and local D1 to verify the organizer reset, DRAFT/LIVE/PAUSED/ENDED transitions, one-participation registration, persisted order and secondary clue, scan/answer progression, results, invalidation/release, and that reset preserves checkpoint content and QR tokens. This checklist is PC-side preparation only; it is not evidence of a real-phone test.

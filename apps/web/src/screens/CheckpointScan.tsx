@@ -291,3 +291,22 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
     </MobileShell>
   )
 }
+
+function WrongCheckpointScreen({ onBack }: { onBack: () => void }) {
+  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-8"><h1 className="text-2xl font-black">Este no es tu próximo punto.</h1><p className="mt-3 text-muted">Volvé a leer la pista y buscá el QR correcto.</p><Button className="mt-6" onClick={onBack}>Ver mi pista</Button></main></MobileShell>
+}
+
+function ChallengeScreen({ state, onResult }: { state: Extract<GameState, { state: 'CHALLENGE' | 'ANSWER_INCORRECT' }>, onResult: (state: GameState) => void }) {
+  const [answer, setAnswer] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!answer.trim()) return
+    setSubmitting(true); setError('')
+    try { onResult(await submitAnswer(state.challengeId, { answer: answer.trim() })) }
+    catch { setError('No se pudo enviar la respuesta. Intentá nuevamente.') }
+    finally { setSubmitting(false) }
+  }
+  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-7 pb-8"><p className="text-xs font-bold text-brand uppercase">Desafío {state.stepNumber} de {state.totalSteps}</p><h1 className="mt-3 text-xl font-bold">{state.question}</h1>{state.state === 'ANSWER_INCORRECT' && <p className="mt-4 text-red-600">La respuesta no es correcta. Probá otra vez.</p>}{error && <p className="mt-4 text-red-600">{error}</p>}<form className="mt-6 flex flex-col gap-3" onSubmit={submit}><input className="border rounded p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" /><Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button></form></main></MobileShell>
+}

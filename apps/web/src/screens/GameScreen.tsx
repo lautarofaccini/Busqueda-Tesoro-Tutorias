@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { GameState } from '@busqueda-tesoro/shared'
-import { getGameState } from '../api/client'
+import { getGameState, revealHint } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
@@ -18,6 +18,7 @@ export function GameScreen() {
   const navigate = useNavigate()
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingHint, setLoadingHint] = useState(false)
 
   useEffect(() => {
     void getGameState()
@@ -59,7 +60,21 @@ export function GameScreen() {
     return null
   }
 
+
   const clue = 'clue' in state ? state.clue : null
+  const secondaryClue = 'secondaryClue' in state ? state.secondaryClue : null
+  const hasSecondaryClue = 'hasSecondaryClue' in state ? state.hasSecondaryClue : false
+  const instruction = 'instruction' in state ? state.instruction : null
+  const handleRevealHint = async () => {
+    setLoadingHint(true)
+    try {
+      const newState = await revealHint()
+      setGameState(newState)
+    } finally {
+      setLoadingHint(false)
+    }
+  }
+
   const stepNumber = state.stepNumber
   const totalSteps = state.totalSteps
   const playerName = state.playerName
@@ -99,6 +114,32 @@ export function GameScreen() {
               <p className="text-base text-foreground font-medium leading-relaxed">
                 {clue}
               </p>
+              {instruction && (
+                <div className="mt-4 p-3 bg-neutral-100 rounded text-sm text-neutral-700 border-l-4 border-l-neutral-400">
+                  <span className="block font-bold text-xs uppercase mb-1">Nota:</span>
+                  {instruction}
+                </div>
+              )}
+
+              {secondaryClue && (
+                <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-900 border-l-4 border-l-blue-400">
+                  <span className="block font-bold text-xs uppercase mb-1">Pista adicional:</span>
+                  {secondaryClue}
+                </div>
+              )}
+
+              {hasSecondaryClue && (
+                <div className="mt-4">
+                  <button
+                    onClick={handleRevealHint}
+                    disabled={loadingHint}
+                    className="w-full py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-700 font-bold rounded text-sm disabled:opacity-50"
+                  >
+                    {loadingHint ? 'Revelando...' : 'Ver pista adicional'}
+                  </button>
+                </div>
+              )}
+
               <div className="mt-4 pt-3 border-t border-dashed border-border/80 flex items-center gap-2 text-xs text-muted">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true" />
                 <span>Buscá el código QR en la ubicación descrita</span>

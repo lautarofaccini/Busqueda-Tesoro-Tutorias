@@ -6,6 +6,9 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [participantToInvalidate, setParticipantToInvalidate] = useState<number | null>(null)
+  const [invalidationReason, setInvalidationReason] = useState('')
+  const [participantToRelease, setParticipantToRelease] = useState<number | null>(null)
 
   const fetchResults = async () => {
     setLoading(true)
@@ -51,22 +54,24 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   }
 
 
-  const handleInvalidar = async (id: number) => {
-    const reason = window.prompt("Motivo de invalidación (ej. Trampa, Múltiples cuentas):")
-    if (!reason) return
-    await fetch(`/api/admin/participants/${id}/invalidate`, {
+  const handleInvalidar = async () => {
+    if (!participantToInvalidate || !invalidationReason.trim()) return
+    await fetch(`/api/admin/participants/${participantToInvalidate}/invalidate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason })
+      body: JSON.stringify({ reason: invalidationReason.trim() })
     })
+    setParticipantToInvalidate(null)
+    setInvalidationReason('')
     fetchResults()
   }
 
-  const handleRehabilitar = async (id: number) => {
-    if (!window.confirm("¿Estás seguro de rehabilitar a este participante?")) return
-    await fetch(`/api/admin/participants/${id}/release`, {
+  const handleRehabilitar = async () => {
+    if (!participantToRelease) return
+    await fetch(`/api/admin/participants/${participantToRelease}/release`, {
       method: 'POST'
     })
+    setParticipantToRelease(null)
     fetchResults()
   }
 
@@ -150,6 +155,7 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
                 <th className="p-3 font-bold">Identificación</th>
                 <th className="p-3 font-bold text-right">Puntaje</th>
                 <th className="p-3 font-bold text-right">Errores</th>
+                <th className="p-3 font-bold text-right">Pistas</th>
                 <th className="p-3 font-bold text-right">Tiempo</th>
                 <th className="p-3 font-bold text-right">Acciones</th>
               </tr>
@@ -165,8 +171,8 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
                     <td className="p-3 font-bold text-neutral-500">
                       {p.invalidatedAt ? (
                         <span className="text-red-500 text-xs">ANULADO</span>
-                      ) : p.rank === 'EMPATE' ? (
-                        <span className="text-blue-500 text-xs">EMPATE</span>
+                      ) : p.isTied ? (
+                        <span className="text-blue-500 text-xs">#{p.rank} · EMPATE</span>
                       ) : (
                         `#${p.rank}`
                       )}
@@ -181,12 +187,13 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
                     </td>
                     <td className="p-3 text-right font-bold text-orange-600">{p.score}</td>
                     <td className="p-3 text-right text-red-500">{p.wrongCount}</td>
+                    <td className="p-3 text-right">{p.hintsUsed}</td>
                     <td className="p-3 text-right text-neutral-500 font-mono text-sm">{Math.floor(p.durationSec / 60)}m {p.durationSec % 60}s</td>
                     <td className="p-3 text-right">
                       {p.invalidatedAt ? (
-                        <button onClick={() => handleRehabilitar(p.participantId)} className="text-xs bg-neutral-200 hover:bg-neutral-300 px-2 py-1 rounded">Rehabilitar</button>
+                        <button onClick={() => setParticipantToRelease(p.participantId)} className="text-xs bg-neutral-200 hover:bg-neutral-300 px-2 py-1 rounded">Rehabilitar</button>
                       ) : (
-                        <button onClick={() => handleInvalidar(p.participantId)} className="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded">Invalidar</button>
+                        <button onClick={() => setParticipantToInvalidate(p.participantId)} className="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded">Invalidar</button>
                       )}
                     </td>
                   </tr>
@@ -196,6 +203,10 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
             </tbody>
           </table>
         </div>
+
+        {data.invalidated?.length > 0 && <div className="bg-white rounded shadow p-4 mt-8"><h2 className="font-bold mb-3">Participaciones invalidadas</h2>{data.invalidated.map((p: any) => <div key={p.id} className="flex justify-between border-t py-2 text-sm"><span>{p.playerName} — {p.identifierType} {p.identifierSuffix}</span><button onClick={() => setParticipantToRelease(p.participantId)} className="border px-2 py-1 rounded">Rehabilitar identificación</button></div>)}</div>}
+        {participantToInvalidate && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"><form className="bg-white p-5 rounded w-full max-w-md" onSubmit={(e) => { e.preventDefault(); void handleInvalidar() }}><h2 className="font-bold">Invalidar participación</h2><p className="text-sm mt-2">Queda fuera del ranking y se conserva el historial.</p><textarea required className="w-full border rounded p-2 mt-3" value={invalidationReason} onChange={e => setInvalidationReason(e.target.value)} placeholder="Motivo de invalidación" /><div className="flex gap-2 mt-3"><button className="bg-red-700 text-white px-3 py-2 rounded">Confirmar</button><button type="button" className="border px-3 py-2 rounded" onClick={() => setParticipantToInvalidate(null)}>Cancelar</button></div></form></div>}
+        {participantToRelease && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"><div className="bg-white p-5 rounded w-full max-w-md"><h2 className="font-bold">Rehabilitar identificación</h2><p className="text-sm mt-2">La identificación podrá registrarse nuevamente.</p><div className="flex gap-2 mt-3"><button className="bg-neutral-800 text-white px-3 py-2 rounded" onClick={() => void handleRehabilitar()}>Confirmar</button><button className="border px-3 py-2 rounded" onClick={() => setParticipantToRelease(null)}>Cancelar</button></div></div></div>}
 
         <h2 className="text-xl font-bold mb-4">En Juego (Activos)</h2>
         <div className="bg-white rounded shadow overflow-x-auto">

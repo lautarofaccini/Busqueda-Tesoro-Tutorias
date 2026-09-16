@@ -8,12 +8,12 @@ INSERT OR REPLACE INTO event_settings (id, status, event_name, points_per_correc
 VALUES (1, 'LIVE', '[DEMO] Evento de Prueba LAN', 10, 2);
 
 -- ── Checkpoints ─────────────────────────────────────────────────────────────
-INSERT INTO checkpoints (id, token, sequence_order, label, is_start, active) VALUES
-  (1, 'h7Xm2pL9qR3wK8nT', 0, 'Tutorías — Inicio',       1, 1),
-  (2, 'v4Nj6dF1mQ5yW2bG', 1, 'DEMO A',                  0, 1),
-  (3, 's9Kp8eA3cZ7xR4nL', 2, 'DEMO B',                  0, 1),
-  (4, 'm2Tz5pX8cR1wL9qF', 3, 'DEMO C',                  0, 1),
-  (5, 'k8Rn3mP5yW2bG7xF', 4, 'DEMO D',                  0, 1);
+INSERT INTO checkpoints (id, token, sequence_order, label, is_start, active, primary_clue) VALUES
+  (1, 'h7Xm2pL9qR3wK8nT', 0, 'Tutorías — Inicio',       1, 1, NULL),
+  (2, 'v4Nj6dF1mQ5yW2bG', 1, 'DEMO A',                  0, 1, 'Buscá el código QR marcado "DEMO A" en tu red LAN.'),
+  (3, 's9Kp8eA3cZ7xR4nL', 2, 'DEMO B',                  0, 1, 'Buscá el código QR marcado "DEMO B".'),
+  (4, 'm2Tz5pX8cR1wL9qF', 3, 'DEMO C',                  0, 1, 'Último paso: buscá el código QR marcado "DEMO C".'),
+  (5, 'k8Rn3mP5yW2bG7xF', 4, 'DEMO D',                  0, 1, 'Buscá el código QR marcado "DEMO D" en tu red LAN.');
 
 -- ── Routes ────────────────────────────────────────────────────────────────
 -- Route 1: A -> B -> C

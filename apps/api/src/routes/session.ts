@@ -77,7 +77,7 @@ sessionRoutes.post(
     let participant = await findParticipant(c.env.DB, identifierType, identifierHash)
     if (participant) {
       if (participant.invalidated_at) {
-        // Can participate again
+        return c.json({ error: 'IDENTIFIER_RELEASE_REQUIRED' }, 403)
       } else {
         // Check if they have an active session
         const existingSessionRes = await c.env.DB.prepare('SELECT id FROM sessions WHERE participant_id = ? AND status != \'abandoned\'').bind(participant.id).first()

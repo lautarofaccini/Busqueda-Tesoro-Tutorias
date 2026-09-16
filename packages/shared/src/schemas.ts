@@ -44,6 +44,9 @@ export const checkpointSchema = z.object({
   label: z.string().min(1),
   active: z.number().int().min(0).max(1),
   is_start: z.number().int().min(0).max(1),
+  instruction: z.string().trim().max(1000).nullable().optional(),
+  primary_clue: z.string().trim().max(2000).nullable().optional(),
+  secondary_clue: z.string().trim().max(2000).nullable().optional(),
 })
 export type CheckpointDto = z.infer<typeof checkpointSchema>
 

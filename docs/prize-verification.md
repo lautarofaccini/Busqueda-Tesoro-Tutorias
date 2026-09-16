@@ -7,3 +7,9 @@ Because the application collects only minimal player information (Name, and Lega
 2. **Leaderboard:** The Organizer Results view displays the player's name and their Legajo/DNI suffix (e.g., `LEGAJO ****123`).
 3. **Physical Verification:** When a winning player comes to claim a physical prize, the Organizer must ask for their physical student ID or DNI card to verify that it matches the Legajo/DNI entered at the start of the session.
 4. **Resolution of Fraud:** If the physical ID does not match, the organizer has the right to deny the prize and use the Admin Console to click **Invalidar Participante**, effectively removing that player from the ranked leaderboard.
+## Prize verification policy
+
+- A participant registered with a **LEGAJO** is verified at prize delivery by matching their name and legajo against a reasonable university credential or source.
+- A participant registered with **DNI** because they do not yet have a legajo is verified by matching their name and DNI to their identity document.
+- The application stores only the identifier type, HMAC hash, and a masked suffix. It does not integrate with university systems.
+- Equal scores remain tied. The software does not randomly select a prize winner; any draw among tied prize positions is an organizer policy decision.

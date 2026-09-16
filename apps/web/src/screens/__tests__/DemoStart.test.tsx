@@ -23,10 +23,11 @@ describe('DemoStart', () => {
     expect(screen.getByRole('button', { name: /comenzar/i })).toBeDisabled()
   })
 
-  it('enables the start button when a name is typed', async () => {
+  it('enables the start button when name and identifier are typed', async () => {
     const user = userEvent.setup()
     setup()
     await user.type(screen.getByLabelText(/tu nombre/i), 'Ana García')
+    await user.type(screen.getByPlaceholderText(/número de legajo/i), '12345')
     expect(screen.getByRole('button', { name: /comenzar/i })).not.toBeDisabled()
   })
 

@@ -19,6 +19,7 @@ import {
   getAssignedChallenge,
   getSessionStep,
   getSessionTotalSteps,
+  hasUsedHint,
 } from '../db/queries.js'
 
 export async function buildGameState(
@@ -58,9 +59,14 @@ export async function buildGameState(
   const step = await getSessionStep(db, session.id, session.current_step)
   if (!step) return { state: 'NEEDS_START' }
 
+  const usedHint = await hasUsedHint(db, session.id, session.current_step)
+
   return {
     state: 'ACTIVE',
-    clue: step.clue_text,
+    clue: step.primary_clue,
+    ...(usedHint ? { secondaryClue: step.secondary_clue } : {}),
+    hasSecondaryClue: !!step.secondary_clue && !usedHint,
+    instruction: step.instruction,
     stepNumber: session.current_step,
     totalSteps,
     playerName: session.player_name,
