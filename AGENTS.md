@@ -13,6 +13,11 @@ Read these in order before starting work:
 4. `docs/decision-log.md`
 5. task-specific docs
 
+## SKILLS (ANTIGRAVITY NATIVE)
+This repository contains native Antigravity skills located in `.agents/skills/<skill-name>/SKILL.md`.
+These skills use Antigravity's progressive disclosure mechanism and are automatically discoverable.
+If a skill is listed in your "Available skills" block (e.g. `mobile-frontend`, `worker-d1-backend`, `testing-qa`), you must read its `SKILL.md` before starting work in that domain.
+
 ## STARTUP CHECKLIST
 Every agent must begin by inspecting:
 - `git status`

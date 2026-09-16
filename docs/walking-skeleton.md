@@ -4,7 +4,7 @@ A walking skeleton is the thinnest possible slice that connects all
 architectural components end-to-end, proving the build pipeline and
 integration points work before adding real functionality.
 
-## Phase 0 — Bootstrap (current)
+## Phase 0 — Bootstrap (DONE)
 
 **Goal**: repository structure, mobile UI prototype, passing build/typecheck/test.
 
@@ -14,43 +14,38 @@ integration points work before adding real functionality.
 - Four prototype screens with correct mobile shell layout
 - Design token system (orange/amber/yellow palette, 100dvh shell)
 - Cloudflare Worker skeleton with Hono (health only; others return 501)
-- D1 schema in migrations/0001_init.sql (not yet applied)
+- D1 schema in migrations/0001_init.sql
 - Shared Zod schemas and TypeScript types
 - Documentation: architecture, product principles, UI guidelines, security, walking skeleton
 - Git initialised, .gitignore in place
 
-**Not done (intentional)**:
-- No real checkpoint validation
-- No session management
-- No D1 provisioned
-- No QR code scanning
-- No answer submission
-- No admin interface
-- No real game content
+## Phase 1 — Local Walking Skeleton + Question Pools (DONE)
 
-## Phase 1 — Recommended next step
+Connect the scan flow end-to-end and implement anti-cheat:
 
-Connect the scan flow end-to-end with one test checkpoint:
+**Done**:
+- Local D1 migrations applied
+- Real session management via HttpOnly cookies
+- `POST /api/session/start` implemented
+- `POST /api/scan/:token` implemented with sequence enforcement
+- Demo frontend wired to live local API
+- `POST /api/challenge/:challengeId/answer` with server-side normalisation
+- Persistent randomized question pools per checkpoint
+- Anti-substitution challenge validation
+- Agent operating context (`AGENTS.md`, `.agents/skills`)
+- Full Vitest API integration test suite passing
 
-1. Provision D1: `wrangler d1 create busqueda-tesoro-db`
-2. Apply schema: `wrangler d1 execute ... --file=migrations/0001_init.sql`
-3. Seed one start checkpoint with a known token.
-4. Implement `POST /api/session/start`.
-5. Implement `GET /api/checkpoint/:token` with sequence enforcement.
-6. Wire DemoStart form to the real API.
-7. Replace DemoGame placeholder with real clue from server.
-8. Deploy Worker: `wrangler deploy`.
-9. Deploy frontend to Cloudflare Pages.
+## Phase 2 — Next Steps (Current Focus)
 
-## Phase 2 — Answer submission
-
-- Challenge detail screen with answer input
-- `POST /api/answer` with server-side normalisation
-- Correct → advance session; incorrect → feedback only
+- Scoring rules, tie breakers, hint penalties
+- Camera QR scanning integration
+- Admin UI / organizer results view
+- Final frontend cleanup
+- Cloudflare production deployment
 
 ## Phase 3 — Full hunt
 
 - All checkpoints seeded with confirmed faculty content
 - Real QR codes printed
-- End screen when all checkpoints completed
-- Optional: read-only organiser progress view
+- Physical mobile test
+- Event launch

@@ -6,7 +6,7 @@ Students walk through the faculty, scan physical QR codes, and solve
 challenges at each location.
 
 > **Implementation environment**: Antigravity
-> **Status**: Phase 0 — bootstrap
+> **Status**: Phase 1 — Local Walking Skeleton + Question Pools
 
 ---
 
