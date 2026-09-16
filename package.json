@@ -11,7 +11,7 @@
     "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev:web\" \"npm run dev:api\"",
     "dev:lan": "concurrently -n web,api -c cyan,magenta \"npm run dev:web:lan\" \"npm run dev:api\"",
     "dev:web": "npm run dev -w apps/web",
-    "dev:web:lan": "npm run dev -- --host -w apps/web",
+    "dev:web:lan": "npm run dev -w apps/web -- --host 0.0.0.0",
     "dev:api": "npm run dev -w apps/api",
     "build": "npm run build -w apps/web",
     "typecheck": "npm run typecheck -w packages/shared && npm run typecheck -w apps/web && npm run typecheck -w apps/api",

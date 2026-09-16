@@ -26,7 +26,7 @@ import {
   logScanEvent,
   getEventSettings,
 } from '../db/queries.js'
-import { buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
+import { buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
 
 const sessionRoutes = new Hono<{ Bindings: Env }>()
@@ -78,7 +78,7 @@ sessionRoutes.post(
       outcome: 'SESSION_STARTED',
     })
 
-    const secure = !isLocalRequest(c.req.url)
+    const secure = c.env.ENVIRONMENT === 'production'
     c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
 
     // Build initial game state from a minimal session object

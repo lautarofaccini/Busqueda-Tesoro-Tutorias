@@ -5,7 +5,7 @@ import { getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Env } from '../env.d'
 import { getOrganizerResults } from '../db/queries.js'
 import { calculateScore } from '../lib/scoring.js'
-import { isLocalRequest } from '../lib/cookies.js'
+
 
 export const organizerRoutes = new Hono<{ Bindings: Env }>()
 
@@ -23,12 +23,12 @@ organizerRoutes.post(
       return c.json({ error: 'UNAUTHORIZED' }, 401)
     }
 
-    const secure = !isLocalRequest(c.req.url)
+    const secure = c.env.ENVIRONMENT === 'production'
     await setSignedCookie(c, AUTH_COOKIE, 'authenticated', c.env.ORGANIZER_SECRET, {
       httpOnly: true,
       secure,
       sameSite: 'Lax',
-      path: '/api/organizer'
+      path: '/api'
     })
     return c.json({ success: true })
   }

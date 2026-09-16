@@ -73,4 +73,39 @@ describe('Organizer API', () => {
     expect(data.totals).toEqual({ all: 0, active: 0, completed: 0 })
     expect(data.ranking).toEqual([])
   })
+
+  it('admin routes accept the same organizer auth cookie', async () => {
+    // Missing cookie -> 401
+    const noAuth = await worker.fetch('/api/admin/event')
+    expect(noAuth.status).toBe(401)
+
+    // Forged cookie -> 401
+    const forged = await worker.fetch('/api/admin/event', {
+      headers: { cookie: 'organizer_auth=forged_value' }
+    })
+    expect(forged.status).toBe(401)
+
+    // Login correctly
+    const loginRes = await worker.fetch('/api/organizer/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase: 'super_secret' })
+    })
+    expect(loginRes.status).toBe(200)
+
+    const setCookie = loginRes.headers.get('set-cookie')
+    expect(setCookie).toBeTruthy()
+    // Verify the path is correct
+    expect(setCookie).toContain('Path=/api')
+
+    const cookie = setCookie!.split(';')[0]
+    
+    // Valid cookie -> 200
+    const res = await worker.fetch('/api/admin/event', {
+      headers: { cookie }
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.status).toBe('LIVE')
+  })
 })

@@ -33,7 +33,7 @@ import {
   getRouteTotalSteps,
   getEventSettings,
 } from '../db/queries.js'
-import { getSessionToken, buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
+import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
 
 const answerRoutes = new Hono<{ Bindings: Env }>()
@@ -116,7 +116,7 @@ answerRoutes.post(
 
     if (isLastStep) {
       await completeSession(c.env.DB, session.id)
-      const secure = !isLocalRequest(c.req.url)
+      const secure = c.env.ENVIRONMENT === 'production'
       c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
       return c.json({
         state: 'COMPLETED',
@@ -131,7 +131,7 @@ answerRoutes.post(
 
     const updatedSession = { ...session, current_step: nextStep, unlocked_step: null }
 
-    const secure = !isLocalRequest(c.req.url)
+    const secure = c.env.ENVIRONMENT === 'production'
     c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
 
     const state = await buildGameState(c.env.DB, updatedSession)

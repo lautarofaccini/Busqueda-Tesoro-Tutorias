@@ -8,7 +8,7 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
-import { getSessionToken, buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
+import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
 import { getAnySession, getActiveSession, getEventSettings } from '../db/queries.js'
 import { buildGameState } from '../lib/game-state.js'
 
@@ -36,7 +36,7 @@ gameRoutes.get('/state', async (c) => {
   }
 
   // Refresh cookie lifetime on each page load
-  const secure = !isLocalRequest(c.req.url)
+  const secure = c.env.ENVIRONMENT === 'production'
   c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
 
   const state = await buildGameState(c.env.DB, session)

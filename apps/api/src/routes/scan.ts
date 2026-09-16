@@ -39,7 +39,7 @@ import {
   assignChallenge,
   getEventSettings,
 } from '../db/queries.js'
-import { getSessionToken, buildSessionCookie, isLocalRequest } from '../lib/cookies.js'
+import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
 
 const scanRoutes = new Hono<{ Bindings: Env }>()
@@ -48,7 +48,7 @@ scanRoutes.post('/:token', async (c) => {
   const rawToken = c.req.param('token')
   const cookieHeader = c.req.header('cookie') ?? null
   const sessionToken = getSessionToken(cookieHeader)
-  const secure = !isLocalRequest(c.req.url)
+  const secure = c.env.ENVIRONMENT === 'production'
 
   // 1. Resolve token
   const checkpoint = await getCheckpointByToken(c.env.DB, rawToken)
