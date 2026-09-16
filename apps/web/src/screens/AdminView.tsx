@@ -182,12 +182,13 @@ function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (d
 }
 
 
-function CheckpointsAdmin() {
+export function CheckpointsAdmin() {
   const [checkpoints, setCheckpoints] = useState<any[]>([])
   const [challenges, setChallenges] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [newCheckpoint, setNewCheckpoint] = useState({ label: '', primary_clue: '' })
+  const [expandedCheckpointId, setExpandedCheckpointId] = useState<number | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -212,6 +213,10 @@ function CheckpointsAdmin() {
     if (res.ok) { setAdding(false); setNewCheckpoint({ label: '', primary_clue: '' }); load() }
   }
 
+  const toggleCheckpoint = (id: number) => {
+    setExpandedCheckpointId(current => current === id ? null : id)
+  }
+
   if (loading) return <div>Cargando...</div>
 
   return (
@@ -231,7 +236,7 @@ function CheckpointsAdmin() {
       
       <div className="flex flex-col gap-6">
         {checkpoints.map(cp => (
-          <CheckpointCard key={cp.id} checkpoint={cp} challenges={challenges.filter(c => c.checkpoint_id === cp.id)} reload={load} />
+          <CheckpointCard key={cp.id} checkpoint={cp} challenges={challenges.filter(c => c.checkpoint_id === cp.id)} expanded={expandedCheckpointId === cp.id} onToggle={() => toggleCheckpoint(cp.id)} reload={load} />
         ))}
       </div>
     </div>
@@ -239,8 +244,7 @@ function CheckpointsAdmin() {
 }
 
 
-function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, challenges: any[], reload: () => void }) {
-  const [expanded, setExpanded] = useState(false)
+function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: { checkpoint: any, challenges: any[], expanded: boolean, onToggle: () => void, reload: () => void }) {
   const [editingCP, setEditingCP] = useState(false)
   const [editCPData, setEditCPData] = useState({
     label: checkpoint.label,
@@ -283,9 +287,13 @@ function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, c
     }
   }
 
+  const qrTargetUrl = `${window.location.origin}/q/${checkpoint.token}`
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(qrTargetUrl)}&format=svg`
+  const [showQr, setShowQr] = useState(false)
+
   return (
     <div className="bg-white border rounded shadow-sm overflow-hidden">
-      <div className="p-4 flex items-center justify-between bg-neutral-50 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+      <div className="p-4 flex items-center justify-between bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors" onClick={onToggle}>
         <div className="flex items-center gap-4">
           <span className="font-mono text-sm text-neutral-500">#{checkpoint.id}</span>
           <h3 className="text-lg font-bold">{checkpoint.label}</h3>
@@ -297,11 +305,15 @@ function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, c
         </div>
         
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+          <button onClick={() => setShowQr(true)} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 font-medium">Ver QR</button>
+          <a href={qrImageUrl} download={`${checkpoint.label.replace(/\s+/g, '-')}.svg`} onClick={event => event.stopPropagation()} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 font-medium">Descargar QR</a>
           <button onClick={regenerateQR} className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 font-medium">Regenerar QR</button>
           <button onClick={toggleActive} className={`text-sm px-3 py-1 rounded text-white font-medium ${checkpoint.active ? 'bg-neutral-500 hover:bg-neutral-600' : 'bg-green-600 hover:bg-green-700'}`}>
             {checkpoint.active ? 'Desactivar' : 'Activar'}
           </button>
-          <span className="text-neutral-400 ml-2">{expanded ? '▲' : '▼'}</span>
+          <button type="button" onClick={event => { event.stopPropagation(); onToggle() }} aria-label={`${expanded ? 'Cerrar' : 'Abrir'} checkpoint ${checkpoint.label}`} aria-expanded={expanded} className="ml-1 rounded p-2 text-neutral-600 hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-orange-500">
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d={expanded ? 'm5 12 5-5 5 5' : 'm5 8 5 5 5-5'} strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
         </div>
       </div>
 
@@ -379,6 +391,14 @@ function CheckpointCard({ checkpoint, challenges, reload }: { checkpoint: any, c
           </div>
         </div>
       )}
+      {showQr && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={`QR de ${checkpoint.label}`} onClick={() => setShowQr(false)}>
+        <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-xl" onClick={event => event.stopPropagation()}>
+          <h4 className="text-lg font-bold">{checkpoint.is_start ? 'INICIO · ' : ''}{checkpoint.label}</h4>
+          <p className="mt-1 text-sm text-neutral-500">QR actual del checkpoint</p>
+          <img src={qrImageUrl} alt={`Código QR de ${checkpoint.label}`} className="mx-auto my-5 h-64 w-64" />
+          <div className="flex justify-center gap-3"><a href={qrImageUrl} download={`${checkpoint.label.replace(/\s+/g, '-')}.svg`} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white">Descargar QR</a><button type="button" onClick={() => setShowQr(false)} className="rounded border px-4 py-2 text-sm font-bold">Cerrar</button></div>
+        </div>
+      </div>}
     </div>
   )
 }

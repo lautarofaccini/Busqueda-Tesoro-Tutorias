@@ -18,6 +18,7 @@ Following the physical LAN test, several crucial adjustments were made:
 - Added `INVALIDAR` and `REHABILITAR` actions in the Organizer view to handle cheaters or duplicate accounts.
 - Event ranking correctly handles `EMPATE` explicitly for tied scores.
 - Checkpoint content is now: name, active flag, optional instruction, required primary clue for active playable checkpoints, optional secondary clue, stable opaque QR token, and its question pool. Secondary-clue reveals are persisted in `hint_usage`; hint penalties are configured but intentionally not yet applied to scoring.
+- Each checkpoint card provides QR preview and SVG download from its stable token. Bulk QR export/ZIP does not yet exist; obtaining all production-printable QR files in one operation remains a production blocker.
 
 - **Last verified validation commands/results:**
   - `npm run typecheck` (Passed)
