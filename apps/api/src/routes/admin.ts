@@ -10,6 +10,7 @@ import {
   routeSchema,
 } from '@busqueda-tesoro/shared'
 import { getLivePreflightIssues } from '../db/queries.js'
+import { advanceStep, completeSession, getSessionTotalSteps, getAssignedChallenge, getRandomActiveChallengeForCheckpoint, assignChallenge } from '../db/queries.js'
 
 export const adminRoutes = new Hono<{ Bindings: Env }>()
 
@@ -84,9 +85,9 @@ adminRoutes.post('/checkpoints', zValidator('json', checkpointSchema), async (c)
   }
   const token = crypto.randomUUID()
   const result = await c.env.DB.prepare(`
-    INSERT INTO checkpoints (token, sequence_order, label, is_start, active, instruction, primary_clue, secondary_clue)
-    VALUES (?, (SELECT COALESCE(MAX(sequence_order),0)+1 FROM checkpoints), ?, ?, ?, ?, ?, ?)
-  `).bind(token, data.label, data.is_start, data.active, data.instruction ?? null, data.primary_clue ?? null, data.secondary_clue ?? null).run()
+    INSERT INTO checkpoints (token, fallback_code, sequence_order, label, is_start, active, instruction, primary_clue, secondary_clue)
+    VALUES (?, ?, (SELECT COALESCE(MAX(sequence_order),0)+1 FROM checkpoints), ?, ?, ?, ?, ?, ?)
+  `).bind(token, crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase(), data.label, data.is_start, data.active, data.instruction ?? null, data.primary_clue ?? null, data.secondary_clue ?? null).run()
   return c.json({ id: result.meta.last_row_id })
 })
 
@@ -187,6 +188,8 @@ adminRoutes.put('/routes/:id', zValidator('json', routeSchema), async (c) => {
 adminRoutes.post('/reset', async (c) => {
   // Hard delete participant-generated data
   await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM answer_review_requests'),
+    c.env.DB.prepare('DELETE FROM support_requests'),
     c.env.DB.prepare('DELETE FROM hint_usage'),
     c.env.DB.prepare('DELETE FROM question_hint_usage'),
     c.env.DB.prepare('DELETE FROM scan_events'),
@@ -215,5 +218,66 @@ adminRoutes.post('/participants/:id/release', async (c) => {
   await c.env.DB.prepare(
     "UPDATE participants SET invalidated_at = NULL, invalidation_reason = NULL WHERE id = ?"
   ).bind(id).run()
+  return c.json({ success: true })
+})
+
+adminRoutes.get('/assistance', async (c) => {
+  const reviews = await c.env.DB.prepare(`SELECT r.*, p.display_name, cp.label FROM answer_review_requests r JOIN participants p ON p.id=r.participant_id JOIN checkpoints cp ON cp.id=r.checkpoint_id ORDER BY r.status='PENDING' DESC, r.created_at DESC`).all()
+  const support = await c.env.DB.prepare(`SELECT r.*, p.display_name, cp.label FROM support_requests r JOIN participants p ON p.id=r.participant_id LEFT JOIN checkpoints cp ON cp.id=r.checkpoint_id ORDER BY r.status='PENDING' DESC, r.created_at DESC`).all()
+  return c.json({ pendingCount: [...reviews.results, ...support.results].filter((item: any) => item.status === 'PENDING').length, reviews: reviews.results, support: support.results })
+})
+
+adminRoutes.post('/assistance/reviews/:id/resolve', zValidator('json', z.object({ approve: z.boolean(), addAlias: z.boolean().optional(), note: z.string().max(500).optional() })), async (c) => {
+  const id = Number(c.req.param('id'))
+  const decision = c.req.valid('json')
+  const review = await c.env.DB.prepare('SELECT * FROM answer_review_requests WHERE id = ?').bind(id).first<any>()
+  if (!review) return c.json({ error: 'NOT_FOUND' }, 404)
+  if (review.status !== 'PENDING') return c.json({ success: true, idempotent: true })
+  if (!decision.approve) {
+    await c.env.DB.prepare("UPDATE answer_review_requests SET status='REJECTED', organizer_note=?, resolved_at=datetime('now') WHERE id=?").bind(decision.note ?? null, id).run()
+    return c.json({ success: true })
+  }
+  const subsequentCorrect = await c.env.DB.prepare('SELECT 1 FROM answer_attempts WHERE session_id=? AND challenge_id=? AND correct=1 LIMIT 1').bind(review.session_id, review.challenge_id).first()
+  const awardedCorrect = subsequentCorrect ? 0 : 1
+  await c.env.DB.prepare("UPDATE answer_review_requests SET status='APPROVED', awarded_correct=?, reversed_wrong=1, organizer_note=?, resolved_at=datetime('now') WHERE id=?").bind(awardedCorrect, decision.note ?? null, id).run()
+  if (decision.addAlias && review.normalized_answer) {
+    const challenge = await c.env.DB.prepare('SELECT accepted_answers FROM challenges WHERE id=?').bind(review.challenge_id).first<{accepted_answers:string}>()
+    if (challenge) {
+      const answers = JSON.parse(challenge.accepted_answers) as string[]
+      if (!answers.some(answer => answer === review.normalized_answer)) {
+        answers.push(review.normalized_answer)
+        await c.env.DB.prepare('UPDATE challenges SET accepted_answers=? WHERE id=?').bind(JSON.stringify(answers), review.challenge_id).run()
+      }
+    }
+  }
+  if (awardedCorrect) {
+    const session = await c.env.DB.prepare('SELECT current_step, unlocked_step, status FROM sessions WHERE id=?').bind(review.session_id).first<any>()
+    const assigned = session && await c.env.DB.prepare('SELECT challenge_id FROM session_challenge_assignments WHERE session_id=? AND route_step=?').bind(review.session_id, session.current_step).first<any>()
+    if (session?.status === 'active' && session.unlocked_step === session.current_step && assigned?.challenge_id === review.challenge_id) {
+      const total = await getSessionTotalSteps(c.env.DB, review.session_id)
+      if (session.current_step >= total) await completeSession(c.env.DB, review.session_id)
+      else await advanceStep(c.env.DB, review.session_id, session.current_step + 1)
+    }
+  }
+  return c.json({ success: true, awardedCorrect: !!awardedCorrect })
+})
+
+adminRoutes.post('/assistance/support/:id/resolve', zValidator('json', z.object({ note: z.string().max(500).optional() })), async (c) => {
+  await c.env.DB.prepare("UPDATE support_requests SET status='RESOLVED', organizer_note=?, resolved_at=datetime('now') WHERE id=? AND status='PENDING'").bind(c.req.valid('json').note ?? null, Number(c.req.param('id'))).run()
+  return c.json({ success: true })
+})
+
+adminRoutes.post('/participants/:id/manual-checkpoint', async (c) => {
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE participant_id=? AND status='active' ORDER BY id DESC LIMIT 1").bind(Number(c.req.param('id'))).first<any>()
+  if (!session) return c.json({ error: 'NO_ACTIVE_SESSION' }, 404)
+  const step = await c.env.DB.prepare('SELECT checkpoint_id FROM session_steps WHERE session_id=? AND position=?').bind(session.id, session.current_step).first<{checkpoint_id:number}>()
+  if (!step) return c.json({ error: 'ROUTE_ERROR' }, 400)
+  if (!await getAssignedChallenge(c.env.DB, session.id, session.current_step)) {
+    const challenge = await getRandomActiveChallengeForCheckpoint(c.env.DB, step.checkpoint_id)
+    if (!challenge) return c.json({ error: 'NO_ACTIVE_CHALLENGES_AVAILABLE' }, 400)
+    await assignChallenge(c.env.DB, session.id, session.current_step, challenge.id)
+  }
+  if (session.unlocked_step !== session.current_step) await c.env.DB.prepare('UPDATE sessions SET unlocked_step=? WHERE id=?').bind(session.current_step, session.id).run()
+  await c.env.DB.prepare("INSERT INTO scan_events (session_id, checkpoint_id, raw_token, outcome) VALUES (?, ?, 'ORGANIZER_MANUAL', 'MANUAL_CHECKPOINT_VALIDATION')").bind(session.id, step.checkpoint_id).run()
   return c.json({ success: true })
 })

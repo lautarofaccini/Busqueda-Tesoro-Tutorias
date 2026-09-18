@@ -73,6 +73,7 @@ export interface StateAnswerIncorrect {
   hasHint?: boolean
   hint?: string | null
   cooldownRemaining?: number
+  attemptId?: number
 }
 
 /** Correct answer; route advanced. Contains the next clue. */

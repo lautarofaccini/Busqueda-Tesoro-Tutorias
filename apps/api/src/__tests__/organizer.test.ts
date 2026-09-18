@@ -27,6 +27,7 @@ function applyMigrationsAndSeed() {
     'migrations/0006_checkpoint_clues.sql',
     'migrations/0007_cooldown_and_career.sql',
     'migrations/0008_production_scoring_and_review.sql',
+    'migrations/0009_player_support_manual_review.sql',
     'seed/test_seed.sql'
   ]
 

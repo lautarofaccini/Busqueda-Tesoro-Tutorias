@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { GameState } from '@busqueda-tesoro/shared'
-import { getGameState, revealSecondaryHint } from '../api/client'
+import { getGameState, revealSecondaryHint, submitFallbackCode, submitSupport } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
@@ -19,6 +19,9 @@ export function GameScreen() {
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingHint, setLoadingHint] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [fallbackCode, setFallbackCode] = useState('')
+  const [helpMessage, setHelpMessage] = useState('')
 
   useEffect(() => {
     void getGameState()
@@ -145,6 +148,7 @@ export function GameScreen() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true" />
                 <span>Buscá el código QR en la ubicación descrita</span>
               </div>
+              <button className="mt-4 text-sm font-bold text-brand underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button>
             </div>
           ) : (
             <div className="border border-border-warm bg-surface-warm rounded-xl p-5 border-l-4 border-l-amber shadow-xs">
@@ -154,6 +158,8 @@ export function GameScreen() {
             </div>
           )}
         </div>
+
+        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button className="rounded border p-3 text-left" onClick={() => { setHelpMessage('Si tu respuesta fue rechazada, podés pedir revisión desde la pantalla del desafío.') }}>Mi respuesta debería ser correcta</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_SCAN'); setHelpMessage('Avisamos al equipo de asistencia.') }}>No puedo escanear el QR</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_DAMAGED'); setHelpMessage('Avisamos al equipo de asistencia.') }}>El QR está dañado o no funciona</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('OTHER'); setHelpMessage('Avisamos al equipo de asistencia.') }}>Otro problema</button></div><div className="mt-4 border-t pt-3"><label className="text-sm font-bold">Ingresar código del checkpoint</label><div className="mt-2 flex gap-2"><input className="min-w-0 flex-1 rounded border p-2 uppercase" value={fallbackCode} onChange={e => setFallbackCode(e.target.value)} /><button className="rounded bg-brand px-3 text-white" onClick={async () => { try { const next = await submitFallbackCode(fallbackCode); setGameState(next); setHelpOpen(false) } catch { setHelpMessage('No se pudo validar el código.') } }}>Validar</button></div></div>{helpMessage && <p className="mt-3 text-sm">{helpMessage}</p>}<button className="mt-4 w-full rounded border p-2" onClick={() => setHelpOpen(false)}>Cerrar</button></div></div>}
 
         {/* Player tag */}
         <div className="my-auto py-5 flex flex-col items-center justify-center text-center" aria-hidden="true">

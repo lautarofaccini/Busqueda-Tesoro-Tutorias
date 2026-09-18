@@ -95,6 +95,7 @@ export function AdminView() {
     { id: 'resumen', label: 'Resumen' },
     { id: 'evento', label: 'Evento' },
     { id: 'checkpoints', label: 'Checkpoints' },
+    { id: 'asistencia', label: 'Asistencia' },
   ]
 
   return (
@@ -125,9 +126,19 @@ export function AdminView() {
         {activeTab === 'resumen' && <OrganizerView isEmbedded />}
         {activeTab === 'evento' && <EventSettings initialData={eventData} onSaved={setEventData} />}
         {activeTab === 'checkpoints' && <CheckpointsAdmin />}
+        {activeTab === 'asistencia' && <AssistanceAdmin />}
       </main>
     </div>
   )
+}
+
+function AssistanceAdmin() {
+  const [data, setData] = useState<any>(null)
+  const load = async () => { const response = await fetch('/api/admin/assistance'); if (response.ok) setData(await response.json()) }
+  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [])
+  const resolve = async (url: string, body: any) => { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await load() }
+  if (!data) return <p>Cargando asistencia…</p>
+  return <div className="max-w-4xl"><h2 className="text-2xl font-bold">Asistencia <span className="rounded bg-red-600 px-2 py-1 text-sm text-white">{data.pendingCount}</span></h2><p className="mt-1 text-sm text-neutral-500">Actualización automática cada 15 segundos.</p><div className="mt-5 space-y-3">{data.reviews.map((item: any) => <div key={`review-${item.id}`} className="rounded border bg-white p-4"><p className="font-bold">RESPUESTA A REVISAR · {item.display_name}</p><p className="text-sm">{item.label} · {item.created_at} · {item.status}</p><p className="mt-1 text-sm">Respuesta: {item.raw_answer}</p>{item.status === 'PENDING' && <div className="mt-3 flex gap-2"><button className="rounded bg-green-700 px-3 py-2 text-sm text-white" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: true })}>Aprobar</button><button className="rounded border px-3 py-2 text-sm" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: true, addAlias: true })}>Aprobar + alias</button><button className="rounded bg-red-700 px-3 py-2 text-sm text-white" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: false })}>Rechazar</button></div>}</div>)}{data.support.map((item: any) => <div key={`support-${item.id}`} className="rounded border bg-white p-4"><p className="font-bold">{item.category === 'QR_SCAN' || item.category === 'QR_DAMAGED' ? 'QR / CHECKPOINT' : 'OTRO'} · {item.display_name}</p><p className="text-sm">{item.label ?? 'Checkpoint actual'} · {item.created_at} · {item.status}</p>{item.note && <p className="mt-1 text-sm">{item.note}</p>}{item.status === 'PENDING' && <button className="mt-3 rounded border px-3 py-2 text-sm" onClick={() => void resolve(`/api/admin/assistance/support/${item.id}/resolve`, {})}>Resolver</button>}</div>)}</div></div>
 }
 
 function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (data: any) => void }) {
@@ -431,6 +442,7 @@ function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: 
         <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-xl" onClick={event => event.stopPropagation()}>
           <h4 className="text-lg font-bold">{checkpoint.is_start ? 'INICIO · ' : ''}{checkpoint.label}</h4>
           <p className="mt-1 text-sm text-neutral-500">QR actual del checkpoint</p>
+          <p className="mt-3 rounded bg-amber-50 p-3 text-sm font-bold text-amber-900">¿No podés escanear? Código: {checkpoint.fallback_code || 'Pendiente de migración'}</p>
           <img src={qrImageUrl} alt={`Código QR de ${checkpoint.label}`} className="mx-auto my-5 h-64 w-64" />
           <div className="flex justify-center gap-3"><a href={qrImageUrl} download={`${checkpoint.label.replace(/\s+/g, '-')}.svg`} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white">Descargar QR</a><button type="button" onClick={() => setShowQr(false)} className="rounded border px-4 py-2 text-sm font-bold">Cerrar</button></div>
         </div>

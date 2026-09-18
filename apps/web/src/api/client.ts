@@ -74,3 +74,13 @@ export async function revealSecondaryHint(): Promise<GameState> {
 export async function revealQuestionHint(): Promise<GameState> {
   return apiFetch<GameState>('/api/game/question-hint', { method: 'POST' })
 }
+
+export async function submitSupport(category: 'QR_SCAN' | 'QR_DAMAGED' | 'OTHER', note?: string) {
+  return apiFetch<{ success: boolean }>('/api/support/requests', { method: 'POST', body: JSON.stringify({ category, note }) })
+}
+export async function submitAnswerReview(attemptId: number | undefined) {
+  return apiFetch<{ success: boolean }>('/api/support/answer-reviews', { method: 'POST', body: JSON.stringify({ attemptId }) })
+}
+export async function submitFallbackCode(code: string): Promise<GameState> {
+  return apiFetch<GameState>('/api/support/fallback-code', { method: 'POST', body: JSON.stringify({ code }) })
+}

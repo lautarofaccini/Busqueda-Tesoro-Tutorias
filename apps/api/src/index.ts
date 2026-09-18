@@ -6,6 +6,7 @@ import { scanRoutes } from './routes/scan.js'
 import { answerRoutes } from './routes/answer.js'
 import { organizerRoutes } from './routes/organizer.js'
 import { adminRoutes } from './routes/admin.js'
+import { supportRoutes } from './routes/support.js'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -34,6 +35,7 @@ app.route('/api/scan', scanRoutes)         // POST /api/scan/:token
 app.route('/api/challenge', answerRoutes)  // POST /api/challenge/:challengeId/answer
 app.route('/api/organizer', organizerRoutes) // POST /login, GET /results
 app.route('/api/admin', adminRoutes)
+app.route('/api/support', supportRoutes)
 
 // ── Fallback ──────────────────────────────────────────────────────────────
 app.notFound((c) => {

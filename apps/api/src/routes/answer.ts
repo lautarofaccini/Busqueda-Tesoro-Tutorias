@@ -103,7 +103,7 @@ answerRoutes.post(
     const isCorrect = matchesAcceptedAnswers(answer, canonical ?? '', aliases)
 
     // 6. Log attempt
-    await logAnswerAttempt(c.env.DB, {
+    const attemptId = await logAnswerAttempt(c.env.DB, {
       sessionId: session.id,
       challengeId: assignedChallenge.id,
       rawAnswer: answer,
@@ -127,6 +127,7 @@ answerRoutes.post(
         hasHint: !!assignedChallenge.hint_text && !usedHint,
         hint: usedHint ? assignedChallenge.hint_text : undefined,
         cooldownRemaining: 10,
+        attemptId,
       })
     }
 

@@ -35,7 +35,8 @@ const content = JSON.parse(readFileSync(join(__dirname, 'content_v1.json'), 'utf
 let sql = "-- One-shot non-destructive content import. Production remains DRAFT.\nUPDATE event_settings SET status = 'DRAFT' WHERE id = 1;\n"
 for (const checkpoint of content.checkpoints) {
   const token = crypto.randomUUID()
-  sql += `INSERT INTO checkpoints (token, sequence_order, label, is_start, active, instruction, primary_clue) VALUES (${escape(token)}, (SELECT COALESCE(MAX(sequence_order), 0) + 1 FROM checkpoints), ${escape(checkpoint.name)}, ${checkpoint.is_start ? 1 : 0}, 1, ${checkpoint.instruction ? escape(checkpoint.instruction) : 'NULL'}, ${checkpoint.navigation_riddle ? escape(checkpoint.navigation_riddle) : 'NULL'});\n`
+  const fallbackCode = crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()
+  sql += `INSERT INTO checkpoints (token, fallback_code, sequence_order, label, is_start, active, instruction, primary_clue) VALUES (${escape(token)}, ${escape(fallbackCode)}, (SELECT COALESCE(MAX(sequence_order), 0) + 1 FROM checkpoints), ${escape(checkpoint.name)}, ${checkpoint.is_start ? 1 : 0}, 1, ${checkpoint.instruction ? escape(checkpoint.instruction) : 'NULL'}, ${checkpoint.navigation_riddle ? escape(checkpoint.navigation_riddle) : 'NULL'});\n`
   for (const question of checkpoint.questions) {
     const note = reviewReason(question)
     const answers = JSON.stringify([question.canonicalAnswer, ...(question.aliases ?? [])])

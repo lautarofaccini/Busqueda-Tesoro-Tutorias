@@ -44,14 +44,15 @@ import { buildGameState } from '../lib/game-state.js'
 
 const scanRoutes = new Hono<{ Bindings: Env }>()
 
-scanRoutes.post('/:token', async (c) => {
-  const rawToken = c.req.param('token')
+export async function processCheckpointScan(c: any, rawToken: string, isFallback = false) {
   const cookieHeader = c.req.header('cookie') ?? null
   const sessionToken = getSessionToken(cookieHeader)
   const secure = c.env.ENVIRONMENT === 'production'
 
   // 1. Resolve token
-  const checkpoint = await getCheckpointByToken(c.env.DB, rawToken)
+  const checkpoint = isFallback
+    ? await c.env.DB.prepare('SELECT id, token, sequence_order, label, is_start FROM checkpoints WHERE fallback_code = ?').bind(rawToken.trim().toUpperCase()).first()
+    : await getCheckpointByToken(c.env.DB, rawToken)
 
   if (!checkpoint) {
     // Unknown token — return a generic safe state. Do not reveal token invalidity details.
@@ -59,7 +60,7 @@ scanRoutes.post('/:token', async (c) => {
       sessionId: null,
       checkpointId: null,
       rawToken,
-      outcome: 'UNKNOWN_TOKEN',
+      outcome: isFallback ? 'UNKNOWN_FALLBACK_CODE' : 'UNKNOWN_TOKEN',
     })
     return c.json({ state: 'NEEDS_START' })
   }
@@ -193,12 +194,14 @@ scanRoutes.post('/:token', async (c) => {
     sessionId: session.id,
     checkpointId: checkpoint.id,
     rawToken,
-    outcome: 'CHALLENGE',
+    outcome: isFallback ? 'FALLBACK_CODE_CHALLENGE' : 'CHALLENGE',
   })
 
   const updatedSession = { ...session, unlocked_step: session.current_step }
   const state = await buildGameState(c.env.DB, updatedSession)
   return c.json(state)
-})
+}
+
+scanRoutes.post('/:token', async (c) => processCheckpointScan(c, c.req.param('token')))
 
 export { scanRoutes }

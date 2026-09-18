@@ -377,13 +377,14 @@ export async function logAnswerAttempt(
     rawAnswer: string
     correct: boolean
   }
-): Promise<void> {
-  await db
+): Promise<number> {
+  const result = await db
     .prepare(
       'INSERT INTO answer_attempts (session_id, challenge_id, raw_answer, correct) VALUES (?, ?, ?, ?)'
     )
     .bind(opts.sessionId, opts.challengeId, opts.rawAnswer, opts.correct ? 1 : 0)
     .run()
+  return result.meta.last_row_id as number
 }
 
 export async function getOrganizerResults(db: D1Database) {
@@ -460,8 +461,14 @@ export async function getSessionScore(db: D1Database, sessionId: number): Promis
   const counts = await db.prepare(`SELECT
     (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 1) AS correct_count,
     (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 0) AS wrong_count,
-    (SELECT COUNT(*) FROM question_hint_usage WHERE session_id = ?) AS hint_count
-  `).bind(sessionId, sessionId, sessionId).first<{ correct_count: number; wrong_count: number; hint_count: number }>()
+    (SELECT COUNT(*) FROM question_hint_usage WHERE session_id = ?) AS hint_count,
+    (SELECT COUNT(*) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED' AND awarded_correct = 1) AS manual_correct_count,
+    (SELECT COUNT(*) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED' AND reversed_wrong = 1) AS reversed_wrong_count
+  `).bind(sessionId, sessionId, sessionId, sessionId, sessionId).first<{ correct_count: number; wrong_count: number; hint_count: number; manual_correct_count: number; reversed_wrong_count: number }>()
   const settings = await getEventSettings(db) as { points_per_correct?: number; wrong_answer_penalty?: number; hint_penalty?: number } | null
-  return Math.max(0, (counts?.correct_count ?? 0) * (settings?.points_per_correct ?? 100) - (counts?.wrong_count ?? 0) * (settings?.wrong_answer_penalty ?? 10) - (counts?.hint_count ?? 0) * (settings?.hint_penalty ?? 5))
+  return Math.max(0, ((counts?.correct_count ?? 0) + (counts?.manual_correct_count ?? 0)) * (settings?.points_per_correct ?? 100) - Math.max(0, (counts?.wrong_count ?? 0) - (counts?.reversed_wrong_count ?? 0)) * (settings?.wrong_answer_penalty ?? 10) - (counts?.hint_count ?? 0) * (settings?.hint_penalty ?? 5))
+}
+
+export async function getCheckpointByFallbackCode(db: D1Database, code: string): Promise<CheckpointRow | null> {
+  return await db.prepare('SELECT id, token, sequence_order, label, is_start FROM checkpoints WHERE fallback_code = ?').bind(code.trim().toUpperCase()).first<CheckpointRow>() ?? null
 }
