@@ -23,6 +23,7 @@ build/
 .env.local
 .env.*.local
 .dev.vars
+.local-totp/
 
 # TypeScript
 *.tsbuildinfo

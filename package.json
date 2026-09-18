@@ -20,11 +20,14 @@
     "test:watch": "npm run test:watch -w apps/web",
     "db:migrate:local": "npm run db:migrate:local -w apps/api",
     "db:seed:local": "npm run db:seed:local -w apps/api",
-    "db:reset:local": "npm run db:reset:local -w apps/api"
-    ,"content:import:remote": "node scripts/import-content.mjs --remote --database busqueda-tesoro-tutorias-prod"
+    "db:reset:local": "npm run db:reset:local -w apps/api",
+    "admin:totp:setup": "node scripts/admin-totp-setup.mjs",
+    "content:import:remote": "node scripts/import-content.mjs --remote --database busqueda-tesoro-tutorias-prod"
   },
   "devDependencies": {
-    "concurrently": "^9.0.0"
+    "@types/qrcode": "^1.5.6",
+    "concurrently": "^9.0.0",
+    "qrcode": "^1.5.4"
   },
   "engines": {
     "node": ">=20.0.0",

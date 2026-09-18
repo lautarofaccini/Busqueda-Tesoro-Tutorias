@@ -28,6 +28,16 @@ name = "busqueda-tesoro-tutorias"
 [env.production.vars]
 ENVIRONMENT = "production"
 
+# Per-actor authentication protection. `namespace_id` is an account-local
+# positive integer chosen by the deployer; it is not a secret.
+[[env.production.ratelimits]]
+name = "ADMIN_LOGIN_LIMITER"
+namespace_id = "42001"
+
+  [env.production.ratelimits.simple]
+  limit = 10
+  period = 60
+
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "busqueda-tesoro-tutorias-prod"

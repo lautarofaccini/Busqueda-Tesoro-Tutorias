@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 
 export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   const [passphrase, setPassphrase] = useState('')
+  const [totp, setTotp] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
@@ -40,17 +41,25 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
       const res = await fetch('/api/organizer/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase })
+        body: JSON.stringify({ passphrase, totp })
       })
       if (res.ok) {
         await fetchResults()
       } else {
-        setError('Incorrect passphrase')
+        setError(res.status === 429 ? 'Demasiados intentos. Intentá nuevamente en unos instantes.' : 'No se pudo autenticar.')
       }
     } catch (e) {
       setError('Network error')
     }
     setLoading(false)
+  }
+
+  const handleLogout = async () => {
+    await fetch('/api/organizer/logout', { method: 'POST' })
+    setIsAuthenticated(false)
+    setData(null)
+    setPassphrase('')
+    setTotp('')
   }
 
 
@@ -79,18 +88,22 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 font-sans text-neutral-900">
         <form onSubmit={handleLogin} className="bg-white p-6 rounded-lg shadow max-w-sm w-full">
-          <h2 className="text-xl font-bold mb-4">Organizer Login</h2>
+          <h2 className="text-xl font-bold mb-4">Acceso de organizador</h2>
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+          <label className="block text-sm font-medium mb-1" htmlFor="organizer-password">Contraseña</label>
           <input 
+            id="organizer-password"
             type="password" 
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Passphrase"
+            placeholder="Contraseña"
             className="w-full border rounded p-2 mb-4"
             required
           />
+          <label className="block text-sm font-medium mb-1" htmlFor="organizer-totp">Código de autenticación</label>
+          <input id="organizer-totp" type="text" value={totp} onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Código de autenticación" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="w-full border rounded p-2 mb-4" required />
           <button type="submit" className="w-full bg-orange-600 text-white p-2 rounded" disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? 'Verificando...' : 'Entrar'}
           </button>
         </form>
       </div>
@@ -117,6 +130,7 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
             <button onClick={fetchResults} className="bg-white border rounded px-3 py-1 shadow-sm text-sm hover:bg-neutral-50">
               Actualizar
             </button>
+            <button onClick={() => void handleLogout()} className="border rounded px-3 py-1 text-sm hover:bg-neutral-50">Cerrar sesión</button>
           </div>
         )}
         

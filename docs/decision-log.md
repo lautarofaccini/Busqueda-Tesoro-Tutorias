@@ -56,6 +56,16 @@
 - *Reason:* Final values for questions/routes, hint mechanics (if any), and printed QR logistics are still pending.
 - *Status:* UNRESOLVED.
 
+**Organizer password + TOTP**
+- *Reason:* The public production organizer console requires stronger protection than one static password alone.
+- *Decision:* Require `ORGANIZER_SECRET` and an independent RFC 6238-compatible six-digit TOTP secret. Authy is supported as a standard TOTP authenticator without an Authy API integration. Organizer cookies are signed, HttpOnly, same-site strict, secure in production, and expire after four hours.
+- *Status:* Accepted.
+
+**LIVE content preflight**
+- *Reason:* Real navigation riddles and approved questions are operational requirements, not optional admin details.
+- *Decision:* The server refuses a transition to LIVE unless required checkpoint, riddle, question, review, and event configuration checks pass. Content remains editable in DRAFT and PAUSED.
+- *Status:* Accepted.
+
 **Dynamic randomized sequence per session**
 - *Reason:* Replaced global hardcoded routes with \session_steps\ to ensure each player receives a unique, randomized path through all active checkpoints, reducing bottlenecks and tailgating.
 - *Status:* Accepted.

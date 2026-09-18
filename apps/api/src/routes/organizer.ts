@@ -5,21 +5,34 @@ import { getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Env } from '../env.d'
 import { getOrganizerResults } from '../db/queries.js'
 import { calculateScore } from '../lib/scoring.js'
+import { timingSafeSecretEqual, verifyTotp } from '../lib/totp.js'
 
 
 export const organizerRoutes = new Hono<{ Bindings: Env }>()
 
 const AUTH_COOKIE = 'organizer_auth'
 
-// Simple MVP authentication
+export async function isLoginRateLimited(limiter: RateLimit | undefined, actorKey: string): Promise<boolean> {
+  if (!limiter) return false
+  const result = await limiter.limit({ key: `organizer-login:${actorKey}` })
+  return !result.success
+}
+
 organizerRoutes.post(
   '/login',
-  zValidator('json', z.object({ passphrase: z.string() }), (result, c) => {
+  zValidator('json', z.object({ passphrase: z.string(), totp: z.string() }), (result, c) => {
     if (!result.success) return c.json({ error: 'INVALID_INPUT' }, 400)
   }),
   async (c) => {
-    const { passphrase } = c.req.valid('json')
-    if (passphrase !== c.env.ORGANIZER_SECRET) {
+    const { passphrase, totp } = c.req.valid('json')
+    // Cloudflare sets this trusted header at the edge. Do not trust client-supplied X-Forwarded-For.
+    const actorKey = c.req.header('CF-Connecting-IP') ?? 'unknown'
+    if (await isLoginRateLimited(c.env.ADMIN_LOGIN_LIMITER, actorKey)) return c.json({ error: 'RATE_LIMITED' }, 429)
+    const [passwordValid, totpValid] = await Promise.all([
+      timingSafeSecretEqual(c.env.ORGANIZER_SECRET, passphrase),
+      verifyTotp(c.env.ORGANIZER_TOTP_SECRET, totp),
+    ])
+    if (!passwordValid || !totpValid) {
       return c.json({ error: 'UNAUTHORIZED' }, 401)
     }
 
@@ -27,12 +40,25 @@ organizerRoutes.post(
     await setSignedCookie(c, AUTH_COOKIE, 'authenticated', c.env.ORGANIZER_SECRET, {
       httpOnly: true,
       secure,
-      sameSite: 'Lax',
-      path: '/api'
+      sameSite: 'Strict',
+      path: '/api',
+      maxAge: 60 * 60 * 4,
     })
     return c.json({ success: true })
   }
 )
+
+organizerRoutes.post('/logout', async (c) => {
+  const secure = c.env.ENVIRONMENT === 'production'
+  await setSignedCookie(c, AUTH_COOKIE, '', c.env.ORGANIZER_SECRET, {
+    httpOnly: true,
+    secure,
+    sameSite: 'Strict',
+    path: '/api',
+    maxAge: 0,
+  })
+  return c.json({ success: true })
+})
 
 organizerRoutes.get('/results', async (c) => {
   const auth = await getSignedCookie(c, c.env.ORGANIZER_SECRET, AUTH_COOKIE)

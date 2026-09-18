@@ -5,6 +5,7 @@ export function AdminView() {
   const [activeTab, setActiveTab] = useState('resumen')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [passphrase, setPassphrase] = useState('')
+  const [totp, setTotp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [eventData, setEventData] = useState<any>(null)
@@ -31,17 +32,25 @@ export function AdminView() {
       const res = await fetch('/api/organizer/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase })
+        body: JSON.stringify({ passphrase, totp })
       })
       if (res.ok) {
         await checkAuth()
       } else {
-        setError('Acceso denegado (Contraseña incorrecta)')
+        setError(res.status === 429 ? 'Demasiados intentos. Intentá nuevamente en unos instantes.' : 'No se pudo autenticar.')
       }
     } catch (e) {
       setError('Error de red')
     }
     setLoading(false)
+  }
+
+  const handleLogout = async () => {
+    await fetch('/api/organizer/logout', { method: 'POST' })
+    setIsAuthenticated(false)
+    setEventData(null)
+    setPassphrase('')
+    setTotp('')
   }
 
   if (!isAuthenticated) {
@@ -50,11 +59,27 @@ export function AdminView() {
         <form onSubmit={handleLogin} className="bg-white p-6 rounded-lg shadow max-w-sm w-full">
           <h2 className="text-xl font-bold mb-4">Acceso de Administrador</h2>
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+          <label className="block text-sm font-medium mb-1" htmlFor="admin-password">Contraseña</label>
           <input 
+            id="admin-password"
             type="password" 
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
             placeholder="Contraseña"
+            className="w-full border rounded p-2 mb-4"
+            required
+          />
+          <label className="block text-sm font-medium mb-1" htmlFor="admin-totp">Código de autenticación</label>
+          <input
+            id="admin-totp"
+            type="text"
+            value={totp}
+            onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="Código de autenticación"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
             className="w-full border rounded p-2 mb-4"
             required
           />
@@ -93,6 +118,7 @@ export function AdminView() {
             </button>
           ))}
         </nav>
+        <button type="button" onClick={() => void handleLogout()} className="mt-8 w-full rounded border border-neutral-600 px-4 py-2 text-left text-sm hover:bg-neutral-800">Cerrar sesión</button>
       </aside>
       
       <main className="flex-1 p-4 md:p-8 overflow-auto">
@@ -109,6 +135,7 @@ function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (d
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [confirmReset, setConfirmReset] = useState(false)
+  const [preflightIssues, setPreflightIssues] = useState<any[]>([])
 
   useEffect(() => setData(initialData), [initialData])
 
@@ -122,13 +149,19 @@ function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (d
     setSaving(false)
     if (response.ok) {
       onSaved(data)
+      setPreflightIssues([])
       setMessage('Cambios guardados.')
-    } else setMessage('No se pudieron guardar los cambios.')
+    } else {
+      const body = await response.json().catch(() => null)
+      setPreflightIssues(body?.issues ?? [])
+      setMessage(body?.error === 'LIVE_PREFLIGHT_FAILED' ? 'No se puede iniciar el evento hasta completar esta lista.' : 'No se pudieron guardar los cambios.')
+    }
   }
 
   return (
     <div className="max-w-2xl bg-white p-6 rounded shadow">
       <h2 className="text-2xl font-bold mb-6">Configuración del Evento</h2>
+      {preflightIssues.length > 0 && <div className="mb-6 rounded border border-red-300 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">NO SE PUEDE INICIAR EL EVENTO</p><ul className="mt-2 list-disc pl-5">{preflightIssues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}</li>)}</ul></div>}
       
       <div className="mb-6 border-b pb-6">
         <label className="block text-sm font-bold mb-2">Estado del Evento</label>

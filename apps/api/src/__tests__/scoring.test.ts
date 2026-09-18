@@ -6,6 +6,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rmSync } from 'node:fs'
 import { calculateScore } from '../lib/scoring.js'
+import { generateTotp } from '../lib/totp.js'
+
+const TOTP_SECRET = 'JBSWY3DPEHPK3PXP'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const API_ROOT = join(__dirname, '..', '..')
@@ -121,13 +124,13 @@ beforeAll(async () => {
     experimental: { disableExperimentalWarning: true },
     local: true,
     persistTo: TEST_PERSIST,
-    vars: { ORGANIZER_SECRET: 'secret' }
+    vars: { ORGANIZER_SECRET: 'secret', ORGANIZER_TOTP_SECRET: TOTP_SECRET, PARTICIPANT_ID_SECRET: 'test_secret' }
   })
 
   const loginRes = await worker.fetch('/api/organizer/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ passphrase: 'secret' })
+    body: JSON.stringify({ passphrase: 'secret', totp: await generateTotp(TOTP_SECRET) })
   })
   cookieAuth = loginRes.headers.get('set-cookie')?.split(';')[0]!
 }, 30000)

@@ -5,6 +5,9 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rmSync } from 'node:fs'
+import { generateTotp } from '../lib/totp.js'
+
+const TOTP_SECRET = 'JBSWY3DPEHPK3PXP'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const API_ROOT = join(__dirname, '..', '..') 
@@ -43,6 +46,7 @@ beforeAll(async () => {
     persistTo: TEST_PERSIST,
     vars: {
       ORGANIZER_SECRET: 'super_secret',
+      ORGANIZER_TOTP_SECRET: TOTP_SECRET,
       PARTICIPANT_ID_SECRET: 'test_secret'
     }
   })
@@ -64,7 +68,7 @@ describe('Organizer API', () => {
     const loginRes = await worker.fetch('/api/organizer/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'super_secret' })
+      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
     })
     expect(loginRes.status).toBe(200)
     const cookie = loginRes.headers.get('set-cookie')?.split(';')[0]
@@ -94,7 +98,7 @@ describe('Organizer API', () => {
     const loginRes = await worker.fetch('/api/organizer/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'super_secret' })
+      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
     })
     expect(loginRes.status).toBe(200)
 
@@ -112,5 +116,23 @@ describe('Organizer API', () => {
     expect(res.status).toBe(200)
     const data = await res.json() as any
     expect(data.status).toBe('LIVE')
+  })
+
+  it('requires both password and a well-formed TOTP code, and logs out', async () => {
+    const validCode = await generateTotp(TOTP_SECRET)
+    for (const body of [
+      { passphrase: 'wrong', totp: validCode },
+      { passphrase: 'super_secret', totp: '000000' },
+      { passphrase: 'super_secret', totp: 'not-a-code' },
+    ]) {
+      const response = await worker.fetch('/api/organizer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      expect(response.status).toBe(401)
+      expect(JSON.stringify(await response.json())).not.toContain(TOTP_SECRET)
+    }
+    const login = await worker.fetch('/api/organizer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: 'super_secret', totp: validCode }) })
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!
+    const logout = await worker.fetch('/api/organizer/logout', { method: 'POST', headers: { cookie } })
+    expect(logout.status).toBe(200)
+    expect(logout.headers.get('set-cookie')).toContain('Max-Age=0')
   })
 })

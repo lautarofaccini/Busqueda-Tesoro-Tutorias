@@ -9,6 +9,7 @@ import {
   challengeSchema,
   routeSchema,
 } from '@busqueda-tesoro/shared'
+import { getLivePreflightIssues } from '../db/queries.js'
 
 export const adminRoutes = new Hono<{ Bindings: Env }>()
 
@@ -27,8 +28,17 @@ adminRoutes.get('/event', async (c) => {
   return c.json(settings)
 })
 
+adminRoutes.get('/event/preflight', async (c) => {
+  const issues = await getLivePreflightIssues(c.env.DB)
+  return c.json({ ready: issues.length === 0, issues })
+})
+
 adminRoutes.put('/event', zValidator('json', eventSettingsSchema), async (c) => {
   const data = c.req.valid('json')
+  if (data.status === 'LIVE') {
+    const issues = await getLivePreflightIssues(c.env.DB)
+    if (issues.length) return c.json({ error: 'LIVE_PREFLIGHT_FAILED', issues }, 422)
+  }
   await c.env.DB.prepare(`
     UPDATE event_settings SET 
       status = ?, 
@@ -113,6 +123,7 @@ adminRoutes.get('/challenges', async (c) => {
 
 adminRoutes.post('/challenges', zValidator('json', challengeSchema), async (c) => {
   const data = c.req.valid('json')
+  if (data.active && data.needs_review) return c.json({ error: 'NEEDS_REVIEW_MUST_BE_INACTIVE' }, 400)
   const result = await c.env.DB.prepare(`
     INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, hint_text, active, needs_review, review_note)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -123,6 +134,7 @@ adminRoutes.post('/challenges', zValidator('json', challengeSchema), async (c) =
 adminRoutes.put('/challenges/:id', zValidator('json', challengeSchema), async (c) => {
   const id = parseInt(c.req.param('id'))
   const data = c.req.valid('json')
+  if (data.active && data.needs_review) return c.json({ error: 'NEEDS_REVIEW_MUST_BE_INACTIVE' }, 400)
   await c.env.DB.prepare(`
     UPDATE challenges SET checkpoint_id = ?, question_text = ?, accepted_answers = ?, hint_text = ?, active = ?, needs_review = ?, review_note = ?
     WHERE id = ?

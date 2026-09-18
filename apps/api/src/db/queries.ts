@@ -213,6 +213,58 @@ export async function getEventSettings(db: D1Database) {
   return result as any
 }
 
+export interface LivePreflightIssue {
+  code: 'MISSING_EVENT_CONFIGURATION' | 'MISSING_START_CHECKPOINT' | 'MISSING_PRIMARY_CLUE' | 'MISSING_ACTIVE_QUESTION' | 'ACTIVE_NEEDS_REVIEW_QUESTION'
+  checkpointId?: number
+  challengeId?: number
+  label?: string
+  message: string
+}
+
+/** Content checks required before changing an event from DRAFT/PAUSED to LIVE. */
+export async function getLivePreflightIssues(db: D1Database): Promise<LivePreflightIssue[]> {
+  const issues: LivePreflightIssue[] = []
+  const settings = await getEventSettings(db) as {
+    event_name?: string
+    points_per_correct?: number
+    wrong_answer_penalty?: number
+    hint_penalty?: number
+  } | null
+  if (!settings?.event_name?.trim() || settings.points_per_correct == null || settings.wrong_answer_penalty == null || settings.hint_penalty == null) {
+    issues.push({ code: 'MISSING_EVENT_CONFIGURATION', message: 'Falta la configuración básica del evento.' })
+  }
+
+  const start = await db.prepare('SELECT id FROM checkpoints WHERE is_start = 1 AND active = 1 LIMIT 1').first()
+  if (!start) issues.push({ code: 'MISSING_START_CHECKPOINT', message: 'Falta un checkpoint de INICIO activo.' })
+
+  const checkpoints = await db.prepare('SELECT id, label, is_start, primary_clue FROM checkpoints WHERE active = 1 ORDER BY id').all<{ id: number; label: string | null; is_start: number; primary_clue: string | null }>()
+  for (const checkpoint of checkpoints.results ?? []) {
+    const label = checkpoint.label ?? `Checkpoint ${checkpoint.id}`
+    if (!checkpoint.is_start && !checkpoint.primary_clue?.trim()) {
+      issues.push({ code: 'MISSING_PRIMARY_CLUE', checkpointId: checkpoint.id, label, message: `${label}: falta acertijo de navegación.` })
+    }
+    const activeChallenge = await db.prepare('SELECT id FROM challenges WHERE checkpoint_id = ? AND active = 1 AND needs_review = 0 LIMIT 1').bind(checkpoint.id).first()
+    if (!activeChallenge) {
+      issues.push({ code: 'MISSING_ACTIVE_QUESTION', checkpointId: checkpoint.id, label, message: `${label}: no tiene preguntas activas listas para jugar.` })
+    }
+  }
+
+  const reviewQuestions = await db.prepare(`
+    SELECT ch.id, ch.question_text, cp.label
+    FROM challenges ch JOIN checkpoints cp ON cp.id = ch.checkpoint_id
+    WHERE ch.active = 1 AND ch.needs_review = 1
+    ORDER BY ch.id
+  `).all<{ id: number; question_text: string; label: string | null }>()
+  for (const challenge of reviewQuestions.results ?? []) {
+    issues.push({
+      code: 'ACTIVE_NEEDS_REVIEW_QUESTION',
+      challengeId: challenge.id,
+      message: `${challenge.label ?? 'Checkpoint'}: una pregunta activa sigue marcada REVISAR.`,
+    })
+  }
+  return issues
+}
+
 /** Create a new game session. Returns the new row id. */
 export async function createSession(
   db: D1Database,
