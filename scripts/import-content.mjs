@@ -37,7 +37,8 @@ for (const checkpoint of content.checkpoints) {
 const tempSql = join(__dirname, 'content-import.generated.sql')
 writeFileSync(tempSql, sql)
 try {
-  execFileSync('npx', ['wrangler', 'd1', 'execute', database, '--remote', '--file', tempSql], { cwd: join(__dirname, '..', 'apps', 'api'), stdio: 'inherit' })
+  const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  execFileSync(npxCmd, ['wrangler', 'd1', 'execute', database, '--remote', '--file', tempSql], { cwd: join(__dirname, '..', 'apps', 'api'), stdio: 'inherit' })
 } finally {
   unlinkSync(tempSql)
 }

@@ -5,13 +5,70 @@
       "name": "TUTORÍAS",
       "is_start": true,
       "instruction": null,
-      "navigation_riddle": "El viaje inicia en el departamento de Tutorías.",
+      "navigation_riddle": null,
       "questions": [
         {
-          "text": "¿En qué departamento te encontrás actualmente?",
-          "canonicalAnswer": "tutorias",
-          "aliases": ["tutoría", "tutorias", "departamento de tutorias"],
-          "hint": "Prestá atención al cartel de la puerta.",
+          "text": "¿Qué días podes venir a tutorías por la mañana?",
+          "canonicalAnswer": "Martes y jueves",
+          "aliases": [
+            "Martes",
+            "jueves"
+          ],
+          "hint": "Podes investigar en nuestro instagram",
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué días podes venir a tutorías por la tarde?",
+          "canonicalAnswer": "Lunes, miércoles y viernes",
+          "aliases": [
+            "Lunes",
+            "miércoles",
+            "viernes"
+          ],
+          "hint": "Podes investigar en nuestro instagram",
+          "confirmed": false
+        },
+        {
+          "text": "",
+          "canonicalAnswer": "",
+          "aliases": [],
+          "hint": "Podes investigar en nuestro instagram",
+          "confirmed": false
+        },
+        {
+          "text": "¿En qué horarios podes venir a tutorías por la mañana?",
+          "canonicalAnswer": "9 a 12",
+          "aliases": [
+            "9",
+            "12"
+          ],
+          "hint": "Podes investigar en nuestro instagram",
+          "confirmed": true
+        },
+        {
+          "text": "¿En qué horarios podes venir a tutorías por la tarde?",
+          "canonicalAnswer": "14 a 20hs.",
+          "aliases": [
+            "14",
+            "20"
+          ],
+          "hint": "Podes investigar en nuestro instagram",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuál es el instagram de tutorías?",
+          "canonicalAnswer": "@tutorias.utn.frre",
+          "aliases": [
+            "tutorias.utn.frre"
+          ],
+          "hint": "Podes investigar en nuestro instagram",
+          "confirmed": true
+        },
+        {
+          "text": "Acorde al plano oficial de la facultad, ¿qué número le corresponde al centro de estudiantes CET?",
+          "canonicalAnswer": "40",
+          "aliases": [],
+          "hint": "Podes investigar en el plano junto a nuestra oficina",
           "confirmed": true
         }
       ]
@@ -19,14 +76,57 @@
     {
       "name": "CANTINA",
       "is_start": false,
-      "instruction": "Mantené el orden y no interrumpas el servicio.",
-      "navigation_riddle": "Buscá el lugar donde el café despierta a los futuros ingenieros.",
+      "instruction": null,
+      "navigation_riddle": null,
       "questions": [
         {
-          "text": "¿Cuál es la bebida más vendida en la mañana?",
-          "canonicalAnswer": "cafe",
-          "aliases": ["café"],
-          "hint": "Negro, caliente, te mantiene despierto.",
+          "text": "¿Qué cantidad de azulejos, contados uno arriba del otro, hay en la pared frente al kiosco?",
+          "canonicalAnswer": "8",
+          "aliases": [],
+          "hint": "Podes contarlos en la pared",
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué cantidad de sillas de palet hay en la sección de la cantina?",
+          "canonicalAnswer": "5",
+          "aliases": [],
+          "hint": "Contá solo las de palet que haya en la cantina",
+          "confirmed": false
+        },
+        {
+          "text": "¿Qué cantidad de escalones hay que subir para llegar a la terraza desde la cantina?",
+          "canonicalAnswer": "18",
+          "aliases": [],
+          "hint": "Contá cuantos escalones subimos en la escalera del patio interno",
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué cantidad de luces de techo hay en la cantina?",
+          "canonicalAnswer": "5",
+          "aliases": [],
+          "hint": "Contá solo las luces fluorescentes que haya en la cantina",
+          "confirmed": true
+        },
+        {
+          "text": "Si salis de la biblioteca y pasas por la cantina, ¿a qué grupo de investigación podes llegar directamente?",
+          "canonicalAnswer": "GISIA",
+          "aliases": [
+            "GISIA",
+            "Grupo de investigación sobre inteligencia artificial"
+          ],
+          "hint": "Tiene que ver con una tecnología nueva",
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué frase hay en la parte IZQUIERDA del mural del patio interno?",
+          "canonicalAnswer": "Un pueblo culto nunca podrá ser esclavizado",
+          "aliases": [
+            "pueblo",
+            "culto",
+            "esclavizado",
+            "nunca"
+          ],
+          "hint": "Acordate que es una de las dos frases del mural",
           "confirmed": false
         }
       ]
@@ -35,13 +135,63 @@
       "name": "CET",
       "is_start": false,
       "instruction": null,
-      "navigation_riddle": "El centro de los estudiantes, donde las ideas toman forma y se defienden derechos.",
+      "navigation_riddle": null,
       "questions": [
         {
-          "text": "¿Qué significan las siglas CET?",
-          "canonicalAnswer": "centro de estudiantes tecnologicos",
-          "aliases": ["centro de estudiantes tecnológicos"],
-          "hint": "Es el órgano de representación estudiantil.",
+          "text": "¿De qué color es el MOS del PUNTO VERDE?",
+          "canonicalAnswer": "Amarillo",
+          "aliases": [
+            "Amarillo"
+          ],
+          "hint": "Busca en el punto verde de nuestra facultad",
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué laboratorio está debajo del MOS del punto verde?",
+          "canonicalAnswer": "GISTAQ",
+          "aliases": [
+            "ambiental",
+            "químico"
+          ],
+          "hint": "Busca en el punto verde",
+          "confirmed": true
+        },
+        {
+          "text": "¿Que número tiene el matafuego en la zona del CET?",
+          "canonicalAnswer": "1.3",
+          "aliases": [
+            "1.3",
+            "5195"
+          ],
+          "hint": null,
+          "confirmed": true
+        },
+        {
+          "text": "Si yo estoy por entrar a la oficina del CET ¿el aula 1.3 está a mi izquierda o a mi derecha?",
+          "canonicalAnswer": "Izquierda",
+          "aliases": [
+            "izquierda"
+          ],
+          "hint": null,
+          "confirmed": true
+        },
+        {
+          "text": "Si yo estoy por entrar a la oficina del CET ¿el aula informática 5 está a mi izquierda o a mi derecha?",
+          "canonicalAnswer": "Derecha",
+          "aliases": [
+            "derecha"
+          ],
+          "hint": null,
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué nombre recibe el aula informática 1?",
+          "canonicalAnswer": "Luis E. Verga",
+          "aliases": [
+            "Luis",
+            "Verga"
+          ],
+          "hint": "Busca la placa que le da el nombre al salón",
           "confirmed": true
         }
       ]
@@ -49,14 +199,68 @@
     {
       "name": "ENTRADA A AULA MAGNA",
       "is_start": false,
-      "instruction": "Hacé silencio si hay un evento o clase en curso.",
-      "navigation_riddle": "Donde las grandes conferencias y actos toman lugar, al pie de las escaleras principales.",
+      "instruction": null,
+      "navigation_riddle": null,
       "questions": [
         {
-          "text": "¿Qué evento importante se hace al finalizar la carrera y tiene lugar aquí?",
-          "canonicalAnswer": "colacion",
-          "aliases": ["colación", "entrega de diplomas", "acto de colacion"],
-          "hint": "Implica recibir un diploma.",
+          "text": "¿quién es el autor de la estatua en la zona previa al aula magna?",
+          "canonicalAnswer": "Ricardo Jara",
+          "aliases": [
+            "Jara",
+            "Ricardo",
+            "Jara Ricardo"
+          ],
+          "hint": "Busca en alguna de las estatuas frente al aula magna",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuántas ventanas verticales hay FRENTE a la ENTRADA al aula magna?",
+          "canonicalAnswer": "6",
+          "aliases": [
+            "seis"
+          ],
+          "hint": "Contá solo las verticales más largas",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuál es el nombre del aula magna?",
+          "canonicalAnswer": "Lucio O. Durañona",
+          "aliases": [
+            "Lucio",
+            "Durañona",
+            "Durañona",
+            "Lucio"
+          ],
+          "hint": "Busca la placa",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuál es el salón más cercano al que podés entrar al salir del aula magna?",
+          "canonicalAnswer": "1.6",
+          "aliases": [
+            "uno punto seis",
+            "1,6"
+          ],
+          "hint": "Conta solo las verticales largas",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuántos ventiladores hay en la zona previa a entrar al aula magna?",
+          "canonicalAnswer": "2",
+          "aliases": [
+            "dos"
+          ],
+          "hint": "Son ventiladores de pared",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuál es el nombre de una de las estatuas en la zona previa a ingresar al aula magna?",
+          "canonicalAnswer": "Caminando la vida",
+          "aliases": [
+            "Caminando",
+            "vida"
+          ],
+          "hint": "Busca la placa",
           "confirmed": true
         }
       ]
@@ -64,15 +268,61 @@
     {
       "name": "BIBLIOTECA",
       "is_start": false,
-      "instruction": "Estás entrando a un espacio de estudio. Realizá la actividad en silencio y sin molestar a quienes estén trabajando.",
-      "navigation_riddle": "El santuario del conocimiento, lleno de libros y silencio absoluto.",
+      "instruction": null,
+      "navigation_riddle": null,
       "questions": [
         {
-          "text": "Un pueblo culto nunca podrá ser esclavizado",
-          "canonicalAnswer": "manuel belgrano",
-          "aliases": ["belgrano", "general belgrano"],
-          "hint": "Prócer argentino que creó la bandera.",
+          "text": "¿Cuál es el nombre de la biblioteca?",
+          "canonicalAnswer": "Manuel Ignacio Vargas",
+          "aliases": [
+            "Manuel",
+            "Ignacio",
+            "Vargas"
+          ],
+          "hint": "Busca la placa",
           "confirmed": true
+        },
+        {
+          "text": "¿Qué cantidad de gabinetes CPU hay disponibles para uso estudiantil hay en la biblioteca?",
+          "canonicalAnswer": "7",
+          "aliases": [
+            "siete"
+          ],
+          "hint": "Shhh, no hagas ruido al entrar a contar",
+          "confirmed": true
+        },
+        {
+          "text": "Si vas a entrar en la biblioteca ¿qué departamento hay a la derecha?",
+          "canonicalAnswer": "Departamento de archivo",
+          "aliases": [
+            "archivo",
+            "departamento archivo"
+          ],
+          "hint": null,
+          "confirmed": true
+        },
+        {
+          "text": "¿En qué año se inauguró la ampliación de la biblioteca?",
+          "canonicalAnswer": "2009",
+          "aliases": [
+            "dos mil nueve",
+            "dosmil nueve",
+            "dosmilnueve"
+          ],
+          "hint": "Busca la placa",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuál es el número del matafuego a la izquierda de la entrada a la biblioteca?",
+          "canonicalAnswer": "0.7",
+          "aliases": [
+            "cero siete",
+            "cero punto siete",
+            "07",
+            "0,7"
+          ],
+          "hint": "El número que está casi borrado",
+          "confirmed": false
         }
       ]
     },
@@ -80,14 +330,70 @@
       "name": "TERRAZA",
       "is_start": false,
       "instruction": null,
-      "navigation_riddle": "Subí a lo más alto para tener una vista despejada del cielo chaqueño.",
+      "navigation_riddle": null,
       "questions": [
         {
-          "text": "¿Qué elemento abunda en este lugar al aire libre?",
-          "canonicalAnswer": "sol",
-          "aliases": ["luz", "aire"],
-          "hint": "Es de día y hace calor.",
+          "text": "¿Qué frase hay en la parte CENTRAL del mural del patio interno?",
+          "canonicalAnswer": "Si saber no es un derecho, seguro será un izquierdo.",
+          "aliases": [
+            "Saber",
+            "derecho",
+            "izquierdo"
+          ],
+          "hint": "Mira el muro del patio interno",
           "confirmed": false
+        },
+        {
+          "text": "¿Cuántas lámparas fluorescentes hay en la zona de la parrilla?",
+          "canonicalAnswer": "2",
+          "aliases": [
+            "dos"
+          ],
+          "hint": null,
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuántos paneles solares hay encima del mural del patio interno?",
+          "canonicalAnswer": "8",
+          "aliases": [
+            "ocho"
+          ],
+          "hint": "Conta solo los de ese muro",
+          "confirmed": true
+        },
+        {
+          "text": "¿Cuántas unidades de aires acondicionados hay en la pared frente a el mural del patio interno?",
+          "canonicalAnswer": "17",
+          "aliases": [
+            "diecisiete",
+            "diez y siete",
+            "diesisiete",
+            "diecisiete",
+            "dieciciete"
+          ],
+          "hint": "No cuentes los que están frente de la parrilla",
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué cantidad de escalones hay entre la cantina y la terraza?",
+          "canonicalAnswer": "18",
+          "aliases": [
+            "diez y ocho",
+            "diesiocho",
+            "dieciocho"
+          ],
+          "hint": null,
+          "confirmed": true
+        },
+        {
+          "text": "¿Qué área está al lado de la parrilla?",
+          "canonicalAnswer": "Area de tecnologia educativa",
+          "aliases": [
+            "tecnologia",
+            "educativa"
+          ],
+          "hint": "Inmediatamente al lado de la parrilla",
+          "confirmed": true
         }
       ]
     }
