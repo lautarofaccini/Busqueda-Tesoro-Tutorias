@@ -12,8 +12,8 @@
  *
  * On success:
  *   Returns ACTIVE state with the first clue.
- *   current_step = 1 → player is seeking Demo Checkpoint A.
- *   unlocked_step = NULL → challenge not yet active.
+ *   current_step = 0 → Tutorías start challenge is active.
+ *   current_step >= 1 → persisted randomized destination steps.
  */
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
@@ -21,15 +21,16 @@ import { sessionStartSchema } from '@busqueda-tesoro/shared'
 import type { Env } from '../env.d'
 import {
   getCheckpointByToken,
-  getRandomActiveRoute,
   createSession,
+  cleanupFailedSessionStart,
   logScanEvent,
   getEventSettings,
   findParticipant,
   createParticipant,
   getAssignedChallenge,
   getRandomActiveChallengeForCheckpoint,
-  assignChallenge
+  assignChallenge,
+  getSessionTotalSteps
 } from '../db/queries.js'
 import { buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
@@ -78,6 +79,7 @@ sessionRoutes.post(
     const identifierSuffix = normalizedId.slice(-3).padStart(3, '*')
 
     let participant = await findParticipant(c.env.DB, identifierType, identifierHash)
+    let newlyCreatedParticipantId: number | null = null
     if (participant) {
       if (participant.invalidated_at) {
         return c.json({ error: 'IDENTIFIER_RELEASE_REQUIRED' }, 403)
@@ -98,48 +100,76 @@ sessionRoutes.post(
         identifierSuffix
       })
       participant = { id: pId }
+      newlyCreatedParticipantId = pId
     }
 
     const sessionToken = crypto.randomUUID()
-    const sessionId = await createSession(c.env.DB, {
+    let sessionId: number | null = null
+    try {
+      sessionId = await createSession(c.env.DB, {
         sessionToken,
         playerName: `${playerName.trim()} ${lastName.trim()}`,
         participantId: participant.id,
       })
 
-    await logScanEvent(c.env.DB, {
-      sessionId,
-      checkpointId: checkpoint.id,
-      rawToken: startToken,
-      outcome: 'SESSION_STARTED',
-    })
+      if (await getSessionTotalSteps(c.env.DB, sessionId) === 0) {
+        throw new Error('SESSION_INITIALIZATION_NO_DESTINATIONS')
+      }
 
-    const secure = c.env.ENVIRONMENT === 'production'
-    c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
-
-    // Build initial game state from a minimal session object
-    // current_step = 1, unlocked_step = null → ACTIVE with first clue
-    const session = {
-      id: sessionId,
-      session_token: sessionToken,
-      player_name: playerName.trim(),
-      route_id: 1, // Fallback for types if needed, but not actually used by game state queries
-      current_step: 1,
-      status: 'active',
-      unlocked_step: 1,
-      started_at: new Date().toISOString(),
-      completed_at: null,
-    }
-
-    let challenge = await getAssignedChallenge(c.env.DB, sessionId, 1)
+      // Tutorías is a start-only challenge. Position 0 is intentionally
+      // outside session_steps, whose positions 1..N are destinations.
+      let challenge = await getAssignedChallenge(c.env.DB, sessionId, 0)
       if (!challenge) {
         const randomChallenge = await getRandomActiveChallengeForCheckpoint(c.env.DB, checkpoint.id)
-        if (randomChallenge) {
-          await assignChallenge(c.env.DB, sessionId, 1, randomChallenge.id)
+        if (!randomChallenge) {
+          throw new Error('SESSION_INITIALIZATION_NO_START_CHALLENGE')
         }
+        await assignChallenge(c.env.DB, sessionId, 0, randomChallenge.id)
       }
-    const state = await buildGameState(c.env.DB, session)
-    return c.json(state, 201)
+
+      const session = {
+        id: sessionId,
+        session_token: sessionToken,
+        player_name: playerName.trim(),
+        current_step: 0,
+        status: 'active',
+        unlocked_step: 0,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      }
+      const state = await buildGameState(c.env.DB, session)
+      if (state.state !== 'CHALLENGE') {
+        throw new Error('SESSION_INITIALIZATION_INVALID_INITIAL_STATE')
+      }
+
+      await logScanEvent(c.env.DB, {
+        sessionId,
+        checkpointId: checkpoint.id,
+        rawToken: startToken,
+        outcome: 'SESSION_STARTED',
+      })
+
+      const secure = c.env.ENVIRONMENT === 'production'
+      c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
+      return c.json(state, 201)
+    } catch (error) {
+      // Do not include identifier values, HMACs, secrets, or D1 error text in
+      // the response. The stable diagnostic code is sufficient for logs.
+      console.error('session initialization failed', {
+        code: error instanceof Error ? error.message : 'UNKNOWN',
+        sessionId,
+        participantCreated: newlyCreatedParticipantId !== null,
+      })
+      try {
+        await cleanupFailedSessionStart(c.env.DB, sessionId, newlyCreatedParticipantId)
+      } catch (cleanupError) {
+        console.error('session initialization cleanup failed', {
+          code: cleanupError instanceof Error ? cleanupError.message : 'UNKNOWN',
+          sessionId,
+        })
+      }
+      return c.json({ error: 'SESSION_INITIALIZATION_FAILED' }, 500)
+    }
   }
 )
 

@@ -28,6 +28,7 @@ function applyMigrationsAndSeed() {
     'migrations/0007_cooldown_and_career.sql',
     'migrations/0008_production_scoring_and_review.sql',
     'migrations/0009_player_support_manual_review.sql',
+    'migrations/0010_remove_session_route_dependency.sql',
     'seed/test_seed.sql'
   ]
 

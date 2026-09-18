@@ -26,7 +26,6 @@ export interface SessionRow {
   id: number
   session_token: string
   player_name: string
-  route_id: number
   current_step: number
   status: string          // 'active' | 'completed' | 'abandoned'
   unlocked_step: number | null // NULL = travelling; N = challenge at step N unlocked
@@ -34,9 +33,9 @@ export interface SessionRow {
   completed_at: string | null
 }
 
-export interface RouteStepRow {
+export interface SessionStepRow {
   id: number
-  route_id: number
+  session_id: number
   position: number
   checkpoint_id: number
   primary_clue: string
@@ -74,7 +73,7 @@ export async function getAnySession(
 ): Promise<SessionRow | null> {
   const result = await db
     .prepare(
-      `SELECT id, session_token, player_name, route_id, current_step, status,
+      `SELECT id, session_token, player_name, current_step, status,
               unlocked_step, started_at, completed_at
        FROM sessions WHERE session_token = ?`
     )
@@ -90,7 +89,7 @@ export async function getActiveSession(
 ): Promise<SessionRow | null> {
   const result = await db
     .prepare(
-      `SELECT id, session_token, player_name, route_id, current_step, status,
+      `SELECT id, session_token, player_name, current_step, status,
               unlocked_step, started_at, completed_at
        FROM sessions WHERE session_token = ? AND status = 'active'`
     )
@@ -99,18 +98,18 @@ export async function getActiveSession(
   return result ?? null
 }
 
-/** Get a route step by session + position. */
+/** Get a persisted session step by session + position. */
 export async function getSessionStep(
   db: D1Database,
   sessionId: number,
   position: number
-): Promise<RouteStepRow | null> {
+): Promise<SessionStepRow | null> {
   const result = await db
     .prepare(
-      'SELECT id, session_id as route_id, position, checkpoint_id, (SELECT primary_clue FROM checkpoints WHERE id = session_steps.checkpoint_id) as primary_clue, (SELECT secondary_clue FROM checkpoints WHERE id = session_steps.checkpoint_id) as secondary_clue, (SELECT instruction FROM checkpoints WHERE id = session_steps.checkpoint_id) as instruction FROM session_steps WHERE session_id = ? AND position = ?'
+      'SELECT id, session_id, position, checkpoint_id, (SELECT primary_clue FROM checkpoints WHERE id = session_steps.checkpoint_id) as primary_clue, (SELECT secondary_clue FROM checkpoints WHERE id = session_steps.checkpoint_id) as secondary_clue, (SELECT instruction FROM checkpoints WHERE id = session_steps.checkpoint_id) as instruction FROM session_steps WHERE session_id = ? AND position = ?'
     )
     .bind(sessionId, position)
-    .first<RouteStepRow>()
+    .first<SessionStepRow>()
   return result ?? null
 }
 
@@ -198,16 +197,6 @@ export async function getChallengeById(
   return result ?? null
 }
 
-/** Get a random active route. */
-export async function getRandomActiveRoute(
-  db: D1Database
-): Promise<{ id: number; name: string } | null> {
-  const result = await db
-    .prepare('SELECT id, name FROM routes WHERE active = 1 ORDER BY RANDOM() LIMIT 1')
-    .first<{ id: number; name: string }>()
-  return result ?? null
-}
-
 export async function getEventSettings(db: D1Database) {
   const result = await db.prepare("SELECT * FROM event_settings WHERE id = 1").first()
   return result as any
@@ -276,8 +265,8 @@ export async function createSession(
 ): Promise<number> {
   const result = await db
     .prepare(
-      `INSERT INTO sessions (session_token, player_name, route_id, current_step, status, unlocked_step, participant_id)
-       VALUES (?, ?, 1, 1, 'active', NULL, ?)`
+      `INSERT INTO sessions (session_token, player_name, current_step, status, unlocked_step, participant_id)
+       VALUES (?, ?, 0, 'active', 0, ?)`
     )
     .bind(opts.sessionToken, opts.playerName, opts.participantId)
     .run();
@@ -303,6 +292,41 @@ export async function createSession(
   }
 
   return sessionId;
+}
+
+/**
+ * Remove only records created by an unsuccessful session initialization.
+ * Existing participants are deliberately never removed by this helper.
+ */
+export async function cleanupFailedSessionStart(
+  db: D1Database,
+  sessionId: number | null,
+  newlyCreatedParticipantId: number | null
+): Promise<void> {
+  if (sessionId) {
+    // Some historical audit tables pre-date ON DELETE CASCADE. Delete only
+    // child records for this not-yet-started session before deleting it.
+    await db.batch([
+      db.prepare('DELETE FROM answer_review_requests WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM support_requests WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM question_hint_usage WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM hint_usage WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM answer_attempts WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM attempts WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM scan_events WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM session_challenge_assignments WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM session_steps WHERE session_id = ?').bind(sessionId),
+      db.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId),
+    ])
+  }
+
+  if (newlyCreatedParticipantId) {
+    await db.prepare(`
+      DELETE FROM participants
+      WHERE id = ?
+        AND NOT EXISTS (SELECT 1 FROM sessions WHERE participant_id = participants.id)
+    `).bind(newlyCreatedParticipantId).run()
+  }
 }
 
 /**

@@ -39,6 +39,26 @@ export async function buildGameState(
   const totalSteps = await getSessionTotalSteps(db, session.id)
   const score = await getSessionScore(db, session.id)
 
+  // Position 0 is the Tutorías start challenge. It is deliberately not a
+  // session_steps row: positions 1..N are the randomized physical route.
+  if (session.current_step === 0 && session.unlocked_step === 0) {
+    const challenge = await getAssignedChallenge(db, session.id, 0)
+    if (!challenge) return { state: 'NEEDS_START' }
+    const usedHint = await hasUsedQuestionHint(db, session.id, challenge.id)
+    const wrongCountRes = await db.prepare('SELECT count(*) as c FROM answer_attempts WHERE session_id = ? AND challenge_id = ? AND correct = 0').bind(session.id, challenge.id).first<{ c: number }>()
+    return {
+      state: 'CHALLENGE',
+      challengeId: challenge.id,
+      question: challenge.question_text,
+      stepNumber: 0,
+      totalSteps,
+      playerName: session.player_name,
+      score,
+      hasHint: !!challenge.hint_text && (wrongCountRes?.c ?? 0) > 0 && !usedHint,
+      ...(usedHint ? { hint: challenge.hint_text } : {}),
+    }
+  }
+
   // Challenge is active when unlocked_step equals current_step.
   if (session.unlocked_step === session.current_step) {
     const step = await getSessionStep(db, session.id, session.current_step)

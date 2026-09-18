@@ -91,6 +91,7 @@ function applyMigrationsAndSeed() {
   execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0007_cooldown_and_career.sql`, opts)
   execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0008_production_scoring_and_review.sql`, opts)
   execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0009_player_support_manual_review.sql`, opts)
+  execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0010_remove_session_route_dependency.sql`, opts)
 
   // Apply seed
   execSync(
