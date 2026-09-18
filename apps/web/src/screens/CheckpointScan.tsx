@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { GameState } from '@busqueda-tesoro/shared'
+import type { GameState, SessionStartRequest } from '@busqueda-tesoro/shared'
 import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
@@ -105,7 +105,7 @@ export function CheckpointScan() {
           if (next.state === 'COMPLETED') {
             void navigate('/finish', { replace: true })
           } else if (next.state === 'ADVANCED') {
-            void navigate('/game', { replace: true })
+            void navigate('/game', { replace: true, state: { scoreFeedback: '+100 puntos' } })
           } else {
             setGameState(next)
           }
@@ -161,7 +161,7 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
   const [step, setStep] = useState<'rules' | 'form'>('rules')
   const [playerName, setPlayerName] = useState('')
   const [lastName, setLastName] = useState('')
-  const [career, setCareer] = useState('')
+  const [career, setCareer] = useState<'' | SessionStartRequest['career']>('')
   const [identifierType, setIdentifierType] = useState<'LEGAJO' | 'DNI'>('LEGAJO')
   const [identifierValue, setIdentifierValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -169,19 +169,27 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()) return
+    const expectedLength = identifierType === 'LEGAJO' ? 5 : 8
+    if (!playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()) {
+      setErr('Completá todos los datos para comenzar.')
+      return
+    }
+    if (!new RegExp(`^\\d{${expectedLength}}$`).test(identifierValue)) {
+      setErr(identifierType === 'LEGAJO' ? 'El legajo debe tener exactamente 5 dígitos numéricos.' : 'El DNI debe tener exactamente 8 dígitos numéricos.')
+      return
+    }
     setSubmitting(true)
     setErr(null)
     try {
       const state = await startSession({ 
         playerName: playerName.trim(), 
         lastName: lastName.trim(),
-        career: career.trim(),
+        career: career as SessionStartRequest['career'],
         identifierType,
         identifierValue: identifierValue.trim(),
         startToken 
       })
-      if (state.state === 'ACTIVE' || state.state === 'ADVANCED' || state.state === 'CHALLENGE') {
+      if (state.state === 'ACTIVE' || state.state === 'ADVANCED') {
         void navigate('/game', { replace: true })
       } else {
         onStarted(state)
@@ -206,26 +214,13 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
             <h1 className="text-3xl font-black text-foreground tracking-tight leading-tight mb-6">
               Reglas del Juego
             </h1>
-            <ul className="space-y-4 text-sm font-medium text-foreground">
-              <li className="flex gap-3">
-                <span className="text-brand">1.</span>
-                <span>No se debe interrumpir el funcionamiento normal de la facultad.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-brand">2.</span>
-                <span>Solo se puede participar una vez por alumno.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-brand">3.</span>
-                <span>Gana quien obtenga el mejor puntaje.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-brand">4.</span>
-                <span>En caso de empate en posiciones de premio, se realizará una trivia de preguntas generales al día siguiente.</span>
-              </li>
-            </ul>
-            <div className="mt-8 p-4 bg-surface-warm rounded-lg border border-border">
-              <p className="text-sm font-bold text-center text-foreground uppercase tracking-wider">Duración estimada: hasta 10 minutos</p>
+            <div className="space-y-3 text-sm text-foreground">
+              <p><strong>Cómo jugar:</strong> seguí cada acertijo, encontrá el punto físico, escaneá su QR y respondé el desafío asignado.</p>
+              <p><strong>Puntaje:</strong> correcta +100 · incorrecta -10 · pista voluntaria -5.</p>
+              <p><strong>Respuesta incorrecta:</strong> esperá 10 segundos para volver a intentar.</p>
+              <p><strong>Pista:</strong> aparece después del primer error y solo descuenta puntos si elegís verla.</p>
+              <p><strong>Tiempo:</strong> no cambia el puntaje; se guarda solo como registro.</p>
+              <p>Una participación por estudiante. Cuidemos la actividad normal de la facultad.</p>
             </div>
           </div>
           <Button onClick={() => setStep('form')} className="mt-8 h-14 w-full">
@@ -239,7 +234,7 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
   return (
     <MobileShell>
       <BrandHeader />
-      <main className="flex-1 flex flex-col justify-between px-6 pt-7 pb-8">
+      <main className="flex-1 px-6 pt-7 pb-8">
         <div>
           <h1 className="text-2xl font-black text-foreground tracking-tight leading-tight">
             Tus datos
@@ -248,7 +243,7 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
           <p className="text-xs mt-2 text-muted">Correcta +100 · Incorrecta -10 · Pista voluntaria -5.</p>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 flex flex-col gap-4" noValidate>
+        <form onSubmit={(e) => void handleSubmit(e)} className="mt-5 flex flex-col gap-4" noValidate>
           {err && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded">
               {err}
@@ -268,7 +263,9 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
 
           <div>
             <label htmlFor="career" className="block text-xs font-bold text-foreground mb-1">Carrera</label>
-            <input id="career" type="text" value={career} onChange={(e) => setCareer(e.target.value)} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" />
+            <select id="career" value={career} onChange={(e) => setCareer(e.target.value as '' | SessionStartRequest['career'])} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand">
+              <option value="">Seleccioná tu carrera</option><option value="ISI">ISI</option><option value="IEM">IEM</option><option value="IQ">IQ</option><option value="LAR">LAR</option><option value="TEC">TEC (Tecnicaturas)</option>
+            </select>
           </div>
 
           <div>
@@ -277,7 +274,8 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
               <button type="button" onClick={() => setIdentifierType('LEGAJO')} className={`flex-1 py-2 rounded text-sm font-bold ${identifierType === 'LEGAJO' ? 'bg-neutral-800 text-white' : 'bg-surface border'}`}>LEGAJO</button>
               <button type="button" onClick={() => setIdentifierType('DNI')} className={`flex-1 py-2 rounded text-sm font-bold ${identifierType === 'DNI' ? 'bg-neutral-800 text-white' : 'bg-surface border'}`}>DNI</button>
             </div>
-            <input type="text" inputMode="numeric" value={identifierValue} onChange={(e) => setIdentifierValue(e.target.value)} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" placeholder={identifierType === 'LEGAJO' ? 'Nº de Legajo' : 'Nº de DNI'} />
+            <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={identifierType === 'LEGAJO' ? 5 : 8} value={identifierValue} onChange={(e) => setIdentifierValue(e.target.value.replace(/\D/g, '').slice(0, identifierType === 'LEGAJO' ? 5 : 8))} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" placeholder={identifierType === 'LEGAJO' ? 'Legajo: 5 dígitos' : 'DNI: 8 dígitos'} />
+            <p className="mt-1 text-xs text-muted">{identifierType === 'LEGAJO' ? 'Ingresá los 5 dígitos de tu legajo.' : 'Ingresá los 8 dígitos de tu DNI.'}</p>
           </div>
 
           <Button type="submit" disabled={submitting || !playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()} className="mt-4 h-14 w-full">
@@ -294,7 +292,7 @@ function WrongCheckpointScreen({ onBack }: { onBack: () => void }) {
   return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-8"><h1 className="text-2xl font-black">Este no es tu próximo punto.</h1><p className="mt-3 text-muted">Volvé a leer la pista y buscá el QR correcto.</p><Button className="mt-6" onClick={onBack}>Ver mi pista</Button></main></MobileShell>
 }
 
-function ChallengeScreen({ state, onResult }: { state: Extract<GameState, { state: 'CHALLENGE' | 'ANSWER_INCORRECT' }>, onResult: (state: GameState) => void }) {
+export function ChallengeScreen({ state, onResult }: { state: Extract<GameState, { state: 'CHALLENGE' | 'ANSWER_INCORRECT' }>, onResult: (state: GameState) => void }) {
   const [answer, setAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')

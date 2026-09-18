@@ -94,6 +94,7 @@ export interface StateCompleted {
   state: 'COMPLETED'
   playerName: string
   completedAt: string
+  score: number
 }
 
 /** Event is currently paused by organizers. Gameplay blocked. */

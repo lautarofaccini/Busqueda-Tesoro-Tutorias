@@ -79,6 +79,7 @@ export function FinishScreen() {
             <p className="mt-1.5 text-sm text-muted">
               {state.playerName} · {completedDate}
             </p>
+            <p className="mt-3 text-lg font-black text-brand">Puntos finales: {state.score}</p>
           </div>
         </div>
 
@@ -89,9 +90,8 @@ export function FinishScreen() {
               <span className="text-white text-sm font-black">✓</span>
             </div>
           </div>
-          <p className="text-xs font-mono font-bold tracking-widest text-brand uppercase">
-            Misión cumplida
-          </p>
+          <p className="text-xs font-mono font-bold tracking-widest text-brand uppercase">Misión cumplida</p>
+          <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">Tu resultado quedó guardado. Tutorías revisará los resultados y publicará a las personas ganadoras en sus redes sociales. Los empates en puestos con premio se resolverán con una trivia de cultura general al día siguiente. Los premios estarán disponibles desde el día siguiente.</p>
         </div>
 
         {/* Footer */}

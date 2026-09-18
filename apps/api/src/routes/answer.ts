@@ -137,12 +137,14 @@ answerRoutes.post(
 
     if (isLastStep) {
       await completeSession(c.env.DB, session.id)
+      const score = await getSessionScore(c.env.DB, session.id)
       const secure = c.env.ENVIRONMENT === 'production'
       c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
       return c.json({
         state: 'COMPLETED',
         playerName: session.player_name,
         completedAt: new Date().toISOString(),
+        score,
       })
     }
 

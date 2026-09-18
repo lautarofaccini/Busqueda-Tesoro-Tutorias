@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { GameState } from '@busqueda-tesoro/shared'
 import { getGameState, revealSecondaryHint, submitFallbackCode, submitSupport } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
+import { ChallengeScreen } from './CheckpointScan'
 
 /**
  * GameScreen — shown at /game.
@@ -16,6 +17,7 @@ import { EventPausedEndedView } from '../components/EventPausedEndedView'
  */
 export function GameScreen() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingHint, setLoadingHint] = useState(false)
@@ -59,7 +61,15 @@ export function GameScreen() {
     return <EventPausedEndedView state={state.state} />
   }
 
-  if (state.state !== 'ACTIVE' && state.state !== 'ADVANCED' && state.state !== 'CHALLENGE' && state.state !== 'ANSWER_INCORRECT') {
+  if (state.state === 'CHALLENGE' || state.state === 'ANSWER_INCORRECT') {
+    return <ChallengeScreen state={state} onResult={(next) => {
+      if (next.state === 'COMPLETED') void navigate('/finish', { replace: true })
+      else if (next.state === 'ADVANCED') void navigate('/game', { replace: true, state: { scoreFeedback: '+100 puntos' } })
+      else setGameState(next)
+    }} />
+  }
+
+  if (state.state !== 'ACTIVE' && state.state !== 'ADVANCED') {
     return null
   }
 
@@ -99,13 +109,14 @@ export function GameScreen() {
           </div>
 
           <h1 className="text-2xl font-black text-foreground tracking-tight leading-tight">
-            Tu próxima pista
+            {state.state === 'ADVANCED' ? '¡Correcto! +100 puntos' : 'Tu próximo destino'}
           </h1>
           <p className="mt-1 text-xs text-muted">Correcta +100 · Incorrecta -10 · Pista -5</p>
           <div className="flex items-center gap-1.5 mt-2.5 mb-5" aria-hidden="true">
             <div className="h-1 w-12 bg-brand rounded-full" />
             <div className="h-1 w-4 bg-yellow rounded-full" />
           </div>
+          {(state.state === 'ADVANCED' || (location.state as { scoreFeedback?: string } | null)?.scoreFeedback) && <p className="mb-4 rounded bg-green-50 p-3 text-sm font-bold text-green-800" role="status">{(location.state as { scoreFeedback?: string } | null)?.scoreFeedback ?? '+100 puntos'}</p>}
 
           {/* Clue card */}
           {clue ? (
@@ -146,7 +157,7 @@ export function GameScreen() {
 
               <div className="mt-4 pt-3 border-t border-dashed border-border/80 flex items-center gap-2 text-xs text-muted">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true" />
-                <span>Buscá el código QR en la ubicación descrita</span>
+                <span>Buscá ese lugar y escaneá el QR para desbloquear el siguiente desafío.</span>
               </div>
               <button className="mt-4 text-sm font-bold text-brand underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button>
             </div>

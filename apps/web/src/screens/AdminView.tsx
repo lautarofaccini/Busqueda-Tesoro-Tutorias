@@ -100,7 +100,7 @@ export function AdminView() {
 
   return (
     <div className="min-h-screen bg-neutral-100 font-sans text-neutral-900 flex flex-col md:flex-row">
-      <aside className="w-full md:w-64 bg-neutral-900 text-white p-4">
+      <aside className="w-full md:w-64 shrink-0 bg-neutral-900 text-white p-4">
         <h1 className="text-xl font-bold mb-4 text-orange-500">Admin Control</h1>
         <div className="mb-8 px-4 py-2 bg-neutral-800 rounded">
           <p className="text-xs text-neutral-400 uppercase tracking-widest mb-1">Estado del Evento</p>
@@ -108,7 +108,7 @@ export function AdminView() {
             {eventData?.status || 'DESCONOCIDO'}
           </p>
         </div>
-        <nav className="flex flex-col gap-2">
+        <nav className="flex flex-wrap gap-2 md:flex-col">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -122,7 +122,7 @@ export function AdminView() {
         <button type="button" onClick={() => void handleLogout()} className="mt-8 w-full rounded border border-neutral-600 px-4 py-2 text-left text-sm hover:bg-neutral-800">Cerrar sesión</button>
       </aside>
       
-      <main className="flex-1 p-4 md:p-8 overflow-auto">
+      <main className="min-w-0 flex-1 p-4 md:p-8 overflow-x-hidden">
         {activeTab === 'resumen' && <OrganizerView isEmbedded />}
         {activeTab === 'evento' && <EventSettings initialData={eventData} onSaved={setEventData} />}
         {activeTab === 'checkpoints' && <CheckpointsAdmin />}
@@ -138,7 +138,7 @@ function AssistanceAdmin() {
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [])
   const resolve = async (url: string, body: any) => { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await load() }
   if (!data) return <p>Cargando asistencia…</p>
-  return <div className="max-w-4xl"><h2 className="text-2xl font-bold">Asistencia <span className="rounded bg-red-600 px-2 py-1 text-sm text-white">{data.pendingCount}</span></h2><p className="mt-1 text-sm text-neutral-500">Actualización automática cada 15 segundos.</p><div className="mt-5 space-y-3">{data.reviews.map((item: any) => <div key={`review-${item.id}`} className="rounded border bg-white p-4"><p className="font-bold">RESPUESTA A REVISAR · {item.display_name}</p><p className="text-sm">{item.label} · {item.created_at} · {item.status}</p><p className="mt-1 text-sm">Respuesta: {item.raw_answer}</p>{item.status === 'PENDING' && <div className="mt-3 flex gap-2"><button className="rounded bg-green-700 px-3 py-2 text-sm text-white" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: true })}>Aprobar</button><button className="rounded border px-3 py-2 text-sm" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: true, addAlias: true })}>Aprobar + alias</button><button className="rounded bg-red-700 px-3 py-2 text-sm text-white" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: false })}>Rechazar</button></div>}</div>)}{data.support.map((item: any) => <div key={`support-${item.id}`} className="rounded border bg-white p-4"><p className="font-bold">{item.category === 'QR_SCAN' || item.category === 'QR_DAMAGED' ? 'QR / CHECKPOINT' : 'OTRO'} · {item.display_name}</p><p className="text-sm">{item.label ?? 'Checkpoint actual'} · {item.created_at} · {item.status}</p>{item.note && <p className="mt-1 text-sm">{item.note}</p>}{item.status === 'PENDING' && <button className="mt-3 rounded border px-3 py-2 text-sm" onClick={() => void resolve(`/api/admin/assistance/support/${item.id}/resolve`, {})}>Resolver</button>}</div>)}</div></div>
+  return <div className="max-w-4xl"><h2 className="text-2xl font-bold">Asistencia <span className="rounded bg-red-600 px-2 py-1 text-sm text-white">{data.pendingCount}</span></h2><p className="mt-1 text-sm text-neutral-500">Actualización automática cada 15 segundos.</p><div className="mt-5 space-y-3">{data.reviews.map((item: any) => <div key={`review-${item.id}`} className="rounded border bg-white p-4"><p className="font-bold">RESPUESTA A REVISAR · {item.display_name}</p><p className="text-sm">{item.label} · {item.created_at} · {item.status}</p><p className="mt-1 break-words text-sm">Respuesta: {item.raw_answer}</p>{item.status === 'PENDING' && <div className="mt-3 flex flex-wrap gap-2"><button className="rounded bg-green-700 px-3 py-2 text-sm text-white" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: true })}>Aprobar</button><button className="rounded border px-3 py-2 text-sm" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: true, addAlias: true })}>Aprobar + alias</button><button className="rounded bg-red-700 px-3 py-2 text-sm text-white" onClick={() => void resolve(`/api/admin/assistance/reviews/${item.id}/resolve`, { approve: false })}>Rechazar</button></div>}</div>)}{data.support.map((item: any) => <div key={`support-${item.id}`} className="rounded border bg-white p-4"><p className="font-bold">{item.category === 'QR_SCAN' || item.category === 'QR_DAMAGED' ? 'QR / CHECKPOINT' : 'OTRO'} · {item.display_name}</p><p className="text-sm">{item.label ?? 'Checkpoint actual'} · {item.created_at} · {item.status}</p>{item.note && <p className="mt-1 break-words text-sm">{item.note}</p>}{item.status === 'PENDING' && <button className="mt-3 rounded border px-3 py-2 text-sm" onClick={() => void resolve(`/api/admin/assistance/support/${item.id}/resolve`, {})}>Resolver</button>}</div>)}</div></div>
 }
 
 function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (data: any) => void }) {
@@ -234,15 +234,15 @@ export function CheckpointsAdmin() {
   const [newCheckpoint, setNewCheckpoint] = useState({ label: '', primary_clue: '' })
   const [expandedCheckpointId, setExpandedCheckpointId] = useState<number | null>(null)
 
-  const load = async () => {
-    setLoading(true)
+  const load = async (showLoading = true) => {
+    if (showLoading) setLoading(true)
     const [resCp, resCh] = await Promise.all([
       fetch('/api/admin/checkpoints').then(r => r.json()),
       fetch('/api/admin/challenges').then(r => r.json())
     ])
     setCheckpoints(resCp)
     setChallenges(resCh)
-    setLoading(false)
+    if (showLoading) setLoading(false)
   }
 
   useEffect(() => { load() }, [])
@@ -254,7 +254,7 @@ export function CheckpointsAdmin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ label: newCheckpoint.label, primary_clue: newCheckpoint.primary_clue, is_start: 0, active: 1 })
     })
-    if (res.ok) { setAdding(false); setNewCheckpoint({ label: '', primary_clue: '' }); load() }
+    if (res.ok) { setAdding(false); setNewCheckpoint({ label: '', primary_clue: '' }); void load(false) }
   }
 
   const toggleCheckpoint = (id: number) => {
@@ -265,7 +265,7 @@ export function CheckpointsAdmin() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">Checkpoints y Preguntas</h2>
         <a href="/api/admin/qrs/export" target="_blank" rel="noopener noreferrer" className="bg-blue-600 text-white px-4 py-2 rounded font-bold mr-2">
             Preparar Impresión
@@ -281,7 +281,7 @@ export function CheckpointsAdmin() {
         <div className="flex gap-2"><button className="bg-green-600 text-white px-3 py-2 rounded" type="submit">Crear</button><button type="button" className="border px-3 py-2 rounded" onClick={() => setAdding(false)}>Cancelar</button></div>
       </form>}
       
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4 md:gap-6">
         {checkpoints.map(cp => (
           <CheckpointCard key={cp.id} checkpoint={cp} challenges={challenges.filter(c => c.checkpoint_id === cp.id)} expanded={expandedCheckpointId === cp.id} onToggle={() => toggleCheckpoint(cp.id)} reload={load} />
         ))}
@@ -315,7 +315,7 @@ function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: 
       })
     })
     setEditingCP(false)
-    reload()
+    void reload()
   }
 
   const toggleActive = async () => {
@@ -324,7 +324,7 @@ function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...checkpoint, active: checkpoint.active ? 0 : 1 })
     })
-    reload()
+    void reload()
   }
 
   const regenerateQR = async () => {

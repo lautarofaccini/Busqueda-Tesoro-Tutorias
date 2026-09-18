@@ -33,6 +33,7 @@ export async function buildGameState(
       state: 'COMPLETED',
       playerName: session.player_name,
       completedAt: session.completed_at ?? new Date().toISOString(),
+      score: await getSessionScore(db, session.id),
     }
   }
 

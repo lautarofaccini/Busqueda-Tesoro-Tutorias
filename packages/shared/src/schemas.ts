@@ -13,11 +13,21 @@ export const playerNameSchema = z
 export const sessionStartSchema = z.object({
   playerName: playerNameSchema,
   lastName: z.string().min(1, 'El apellido es obligatorio'),
-  career: z.string().min(1, 'La carrera es obligatoria'),
+  career: z.enum(['ISI', 'IEM', 'IQ', 'LAR', 'TEC'], { message: 'Seleccioná una carrera válida.' }),
   identifierType: z.enum(['LEGAJO', 'DNI']),
-  identifierValue: z.string().min(1, 'La identificación no puede estar vacía.'),
+  identifierValue: z.string(),
   /** Opaque token from the start checkpoint QR. Server validates this. */
   startToken: z.string().min(1),
+}).superRefine((value, context) => {
+  const expectedLength = value.identifierType === 'LEGAJO' ? 5 : 8
+  const label = value.identifierType === 'LEGAJO' ? 'El legajo' : 'El DNI'
+  if (!new RegExp(`^\\d{${expectedLength}}$`).test(value.identifierValue)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['identifierValue'],
+      message: `${label} debe tener exactamente ${expectedLength} dígitos numéricos.`,
+    })
+  }
 })
 
 export type SessionStartRequest = z.infer<typeof sessionStartSchema>
