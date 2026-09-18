@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { generateTotp, verifyTotp } from '../lib/totp.js'
-import { isLoginRateLimited } from '../routes/organizer.js'
+import { isLoginRateLimited, organizerRoutes } from '../routes/organizer.js'
 
 const SECRET = 'JBSWY3DPEHPK3PXP'
 const NOW = 1_700_000_000_000
@@ -20,5 +20,19 @@ describe('organizer TOTP and rate-limit primitives', () => {
     const limit = vi.fn().mockResolvedValue({ success: false })
     await expect(isLoginRateLimited({ limit } as unknown as RateLimit, '203.0.113.8')).resolves.toBe(true)
     expect(limit).toHaveBeenCalledWith({ key: 'organizer-login:203.0.113.8' })
+  })
+
+  it('returns 429 before credential verification when the limiter rejects an attempt', async () => {
+    const response = await organizerRoutes.fetch(new Request('https://example.test/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.8' },
+      body: JSON.stringify({ passphrase: 'anything', totp: '123456' }),
+    }), {
+      ORGANIZER_SECRET: 'password',
+      ORGANIZER_TOTP_SECRET: SECRET,
+      PARTICIPANT_ID_SECRET: 'participant-secret',
+      ADMIN_LOGIN_LIMITER: { limit: async () => ({ success: false }) } as unknown as RateLimit,
+    })
+    expect(response.status).toBe(429)
   })
 })
