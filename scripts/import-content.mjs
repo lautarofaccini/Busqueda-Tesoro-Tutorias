@@ -1,15 +1,23 @@
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const require = createRequire(import.meta.url)
 const args = process.argv.slice(2)
+if (args.includes('--help')) {
+  console.log('Usage: node scripts/import-content.mjs --remote --database <production-db> [--dry-run]')
+  console.log('Imports structured content without resetting a database. Remote execution always requires --remote.')
+  process.exit(0)
+}
 const remote = args.includes('--remote')
 const databaseIndex = args.indexOf('--database')
 const database = databaseIndex >= 0 ? args[databaseIndex + 1] : undefined
 if (!remote || !database) throw new Error('Refusing import: use --remote --database <production-db>. This script never defaults to remote and never resets a database.')
+const dryRun = args.includes('--dry-run')
 
 const escape = (value) => `'${String(value).replaceAll("'", "''")}'`
 const normalize = (value) => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
@@ -37,8 +45,22 @@ for (const checkpoint of content.checkpoints) {
 const tempSql = join(__dirname, 'content-import.generated.sql')
 writeFileSync(tempSql, sql)
 try {
-  const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-  execFileSync(npxCmd, ['wrangler', 'd1', 'execute', database, '--remote', '--file', tempSql], { cwd: join(__dirname, '..', 'apps', 'api'), stdio: 'inherit' })
+  const wranglerPackagePath = require.resolve('wrangler/package.json')
+  const wranglerPackage = require(wranglerPackagePath)
+  const wranglerBin = wranglerPackage.bin?.wrangler
+  if (typeof wranglerBin !== 'string') throw new Error('Installed Wrangler package has no supported CLI entry point.')
+  const wranglerCli = join(dirname(wranglerPackagePath), wranglerBin)
+  const wranglerArgs = ['d1', 'execute', database, '--remote', '--file', tempSql]
+  if (dryRun) {
+    console.log(`Dry run: resolved Wrangler CLI at ${wranglerCli}`)
+    console.log(`Dry run: ${JSON.stringify([process.execPath, wranglerCli, ...wranglerArgs])}`)
+  } else {
+    execFileSync(process.execPath, [wranglerCli, ...wranglerArgs], {
+      cwd: join(__dirname, '..', 'apps', 'api'),
+      stdio: 'inherit',
+      shell: false,
+    })
+  }
 } finally {
   unlinkSync(tempSql)
 }
