@@ -31,6 +31,5 @@ ENVIRONMENT = "production"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "busqueda-tesoro-tutorias-prod"
-# Replace this placeholder only after `wrangler d1 create busqueda-tesoro-tutorias-prod`.
-database_id = "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID"
+database_id = "3dda2aac-7453-4d6e-ae54-282c1a956cc9"
 migrations_dir = "../../migrations"
