@@ -26,7 +26,10 @@ import {
   logScanEvent,
   getEventSettings,
   findParticipant,
-  createParticipant
+  createParticipant,
+  getAssignedChallenge,
+  getRandomActiveChallengeForCheckpoint,
+  assignChallenge
 } from '../db/queries.js'
 import { buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
@@ -41,7 +44,7 @@ sessionRoutes.post(
     }
   }),
   async (c) => {
-    const { playerName, identifierType, identifierValue, startToken } = c.req.valid('json')
+    const { playerName, lastName, career, identifierType, identifierValue, startToken } = c.req.valid('json')
     
     // Check event lifecycle
     const settings = await getEventSettings(c.env.DB)
@@ -88,6 +91,8 @@ sessionRoutes.post(
     } else {
       const pId = await createParticipant(c.env.DB, {
         displayName: playerName.trim(),
+          lastName: lastName.trim(),
+          career: career.trim(),
         identifierType,
         identifierHash,
         identifierSuffix
@@ -97,10 +102,10 @@ sessionRoutes.post(
 
     const sessionToken = crypto.randomUUID()
     const sessionId = await createSession(c.env.DB, {
-      sessionToken,
-      playerName: playerName.trim(),
-      participantId: participant.id,
-    })
+        sessionToken,
+        playerName: `${playerName.trim()} ${lastName.trim()}`,
+        participantId: participant.id,
+      })
 
     await logScanEvent(c.env.DB, {
       sessionId,
@@ -121,11 +126,18 @@ sessionRoutes.post(
       route_id: 1, // Fallback for types if needed, but not actually used by game state queries
       current_step: 1,
       status: 'active',
-      unlocked_step: null,
+      unlocked_step: 1,
       started_at: new Date().toISOString(),
       completed_at: null,
     }
 
+    let challenge = await getAssignedChallenge(c.env.DB, sessionId, 1)
+      if (!challenge) {
+        const randomChallenge = await getRandomActiveChallengeForCheckpoint(c.env.DB, checkpoint.id)
+        if (randomChallenge) {
+          await assignChallenge(c.env.DB, sessionId, 1, randomChallenge.id)
+        }
+      }
     const state = await buildGameState(c.env.DB, session)
     return c.json(state, 201)
   }

@@ -25,6 +25,7 @@ export interface StateStartAllowed {
 
 /** Session active; player is travelling to the next checkpoint. */
 export interface StateActive {
+  score: number
   secondaryClue?: string | null
   hasSecondaryClue?: boolean
   instruction?: string | null
@@ -41,12 +42,16 @@ export interface StateActive {
  * Challenge is now unlocked. No answers included.
  */
 export interface StateChallenge {
+  score: number
   state: 'CHALLENGE'
   challengeId: number
   question: string
   stepNumber: number
   totalSteps: number
   playerName: string
+  hasHint?: boolean
+  hint?: string | null
+  cooldownRemaining?: number
   // NOTE: accepted answers are NEVER included here — server side only.
 }
 
@@ -58,16 +63,21 @@ export interface StateWrongCheckpoint {
 
 /** Player submitted a wrong answer. */
 export interface StateAnswerIncorrect {
+  score: number
   state: 'ANSWER_INCORRECT'
   challengeId: number
   question: string
   stepNumber: number
   totalSteps: number
   playerName: string
+  hasHint?: boolean
+  hint?: string | null
+  cooldownRemaining?: number
 }
 
 /** Correct answer; route advanced. Contains the next clue. */
 export interface StateAdvanced {
+  score: number
   secondaryClue?: string | null
   hasSecondaryClue?: boolean
   instruction?: string | null

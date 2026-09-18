@@ -1,17 +1,17 @@
 {
   "name": "@busqueda-tesoro/api",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy --env production",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate:local": "wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0001_init.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0002_walking_skeleton.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0003_question_pools.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0004_event_admin.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0005_participants_session_order.sql && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/0006_checkpoint_clues.sql",
-    "db:seed:local": "wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/seed_demo.sql",
-    "db:reset:local": "wrangler d1 execute busqueda-tesoro-db --local --command=\"DELETE FROM answer_attempts; DELETE FROM scan_events; DELETE FROM session_challenge_assignments; DELETE FROM route_steps; DELETE FROM challenges; DELETE FROM routes; DELETE FROM sessions; DELETE FROM checkpoints; DELETE FROM event_settings;\" && wrangler d1 execute busqueda-tesoro-db --local --file=../../migrations/seed_demo.sql"
+    "db:migrate:local": "wrangler d1 migrations apply busqueda-tesoro-db --local",
+    "db:seed:local": "wrangler d1 execute busqueda-tesoro-db --local --file=../../seed/demo.sql",
+    "db:reset:local": "node ../../scripts/db-reset-local.mjs"
   },
   "dependencies": {
     "@busqueda-tesoro/shared": "*",

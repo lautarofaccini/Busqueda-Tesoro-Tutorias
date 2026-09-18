@@ -57,7 +57,7 @@ organizerRoutes.get('/results', async (c) => {
     let needsReview = false
     
     if (r.status === 'completed' && r.completedAt) {
-      score = calculateScore(r.correctCount, r.wrongCount)
+      score = calculateScore(r.correctCount, r.wrongCount, r.hintsUsed)
       const start = new Date(r.startedAt).getTime()
       const end = new Date(r.completedAt).getTime()
       durationSec = Math.floor((end - start) / 1000)

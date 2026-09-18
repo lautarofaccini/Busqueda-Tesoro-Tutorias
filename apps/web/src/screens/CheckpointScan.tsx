@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { GameState } from '@busqueda-tesoro/shared'
-import { scanToken, startSession, submitAnswer } from '../api/client'
+import { scanToken, startSession, submitAnswer, revealQuestionHint } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { Button } from '../components/Button'
@@ -155,9 +155,13 @@ interface StartFormProps {
 }
 
 
+
 function StartForm({ startToken, onStarted }: StartFormProps) {
   const navigate = useNavigate()
+  const [step, setStep] = useState<'rules' | 'form'>('rules')
   const [playerName, setPlayerName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [career, setCareer] = useState('')
   const [identifierType, setIdentifierType] = useState<'LEGAJO' | 'DNI'>('LEGAJO')
   const [identifierValue, setIdentifierValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -165,17 +169,19 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!playerName.trim() || !identifierValue.trim()) return
+    if (!playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()) return
     setSubmitting(true)
     setErr(null)
     try {
       const state = await startSession({ 
         playerName: playerName.trim(), 
+        lastName: lastName.trim(),
+        career: career.trim(),
         identifierType,
         identifierValue: identifierValue.trim(),
         startToken 
       })
-      if (state.state === 'ACTIVE' || state.state === 'ADVANCED') {
+      if (state.state === 'ACTIVE' || state.state === 'ADVANCED' || state.state === 'CHALLENGE') {
         void navigate('/game', { replace: true })
       } else {
         onStarted(state)
@@ -191,106 +197,98 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
     }
   }
 
+  if (step === 'rules') {
+    return (
+      <MobileShell>
+        <BrandHeader />
+        <main className="flex-1 flex flex-col justify-between px-6 pt-7 pb-8">
+          <div>
+            <h1 className="text-3xl font-black text-foreground tracking-tight leading-tight mb-6">
+              Reglas del Juego
+            </h1>
+            <ul className="space-y-4 text-sm font-medium text-foreground">
+              <li className="flex gap-3">
+                <span className="text-brand">1.</span>
+                <span>No se debe interrumpir el funcionamiento normal de la facultad.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-brand">2.</span>
+                <span>Solo se puede participar una vez por alumno.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-brand">3.</span>
+                <span>Gana quien obtenga el mejor puntaje.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-brand">4.</span>
+                <span>En caso de empate en posiciones de premio, se realizará una trivia de preguntas generales al día siguiente.</span>
+              </li>
+            </ul>
+            <div className="mt-8 p-4 bg-surface-warm rounded-lg border border-border">
+              <p className="text-sm font-bold text-center text-foreground uppercase tracking-wider">Duración estimada: hasta 10 minutos</p>
+            </div>
+          </div>
+          <Button onClick={() => setStep('form')} className="mt-8 h-14 w-full">
+            Entendido, Continuar
+          </Button>
+        </main>
+      </MobileShell>
+    )
+  }
+
   return (
     <MobileShell>
       <BrandHeader />
       <main className="flex-1 flex flex-col justify-between px-6 pt-7 pb-8">
         <div>
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="w-2 h-2 rounded-xs bg-brand" aria-hidden="true" />
-            <span className="text-xs font-bold tracking-widest text-brand uppercase">
-              Punto de partida — Tutorías
-            </span>
-          </div>
-          <h1 className="text-3xl font-black text-foreground tracking-tight leading-tight">
-            Búsqueda del tesoro
+          <h1 className="text-2xl font-black text-foreground tracking-tight leading-tight">
+            Tus datos
           </h1>
-          <div className="flex items-center gap-1.5 mt-3 mb-6" aria-hidden="true">
-            <div className="h-1 w-12 bg-brand rounded-full" />
-            <div className="h-1 w-4 bg-yellow rounded-full" />
-          </div>
-          <div className="border-l-4 border-l-brand bg-surface border border-border rounded-r-lg p-4 shadow-xs">
-            <p className="text-sm text-foreground font-semibold">
-              QR de inicio escaneado correctamente. Completá tus datos para participar.
-            </p>
-          </div>
+          <p className="text-sm mt-2 text-muted">Completá este formulario para empezar la búsqueda.</p>
+          <p className="text-xs mt-2 text-muted">Correcta +100 · Incorrecta -10 · Pista voluntaria -5.</p>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="my-auto py-6 flex flex-col gap-4" noValidate>
+        <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 flex flex-col gap-4" noValidate>
           {err && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded">
               {err}
             </div>
           )}
           
-          <div>
-            <label htmlFor="playerName" className="block text-sm font-bold text-foreground mb-1.5">
-              ¿Cómo te llamás?
-            </label>
-            <input
-              id="playerName"
-              type="text"
-              autoComplete="off"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              disabled={submitting}
-              className="w-full h-14 bg-surface border border-border rounded-lg px-4 text-lg font-medium placeholder:text-muted/50 focus:outline-hidden focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-50"
-              placeholder="Tu nombre (visible en el ranking)"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-foreground mb-1.5">
-              Identificación (Sólo un juego por persona)
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setIdentifierType('LEGAJO')}
-                className={`flex-1 py-3 rounded border text-sm font-bold ${identifierType === 'LEGAJO' ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-surface text-neutral-600 border-border hover:bg-neutral-50'}`}
-              >
-                LEGAJO
-              </button>
-              <button
-                type="button"
-                onClick={() => setIdentifierType('DNI')}
-                className={`flex-1 py-3 rounded border text-sm font-bold ${identifierType === 'DNI' ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-surface text-neutral-600 border-border hover:bg-neutral-50'}`}
-              >
-                DNI
-              </button>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label htmlFor="playerName" className="block text-xs font-bold text-foreground mb-1">Nombre</label>
+              <input id="playerName" type="text" value={playerName} onChange={(e) => setPlayerName(e.target.value)} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" />
+            </div>
+            <div className="flex-1">
+              <label htmlFor="lastName" className="block text-xs font-bold text-foreground mb-1">Apellido</label>
+              <input id="lastName" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" />
             </div>
           </div>
 
           <div>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              value={identifierValue}
-              onChange={(e) => setIdentifierValue(e.target.value)}
-              disabled={submitting}
-              className="w-full h-14 bg-surface border border-border rounded-lg px-4 text-lg font-medium placeholder:text-muted/50 focus:outline-hidden focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-50"
-              placeholder={identifierType === 'LEGAJO' ? 'Número de Legajo' : 'Número de DNI sin puntos'}
-            />
+            <label htmlFor="career" className="block text-xs font-bold text-foreground mb-1">Carrera</label>
+            <input id="career" type="text" value={career} onChange={(e) => setCareer(e.target.value)} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" />
           </div>
 
-          <Button type="submit" disabled={submitting || !playerName.trim() || !identifierValue.trim()} className="mt-2 h-14 w-full">
+          <div>
+            <label className="block text-xs font-bold text-foreground mb-1">Identificación</label>
+            <div className="flex gap-2 mb-2">
+              <button type="button" onClick={() => setIdentifierType('LEGAJO')} className={`flex-1 py-2 rounded text-sm font-bold ${identifierType === 'LEGAJO' ? 'bg-neutral-800 text-white' : 'bg-surface border'}`}>LEGAJO</button>
+              <button type="button" onClick={() => setIdentifierType('DNI')} className={`flex-1 py-2 rounded text-sm font-bold ${identifierType === 'DNI' ? 'bg-neutral-800 text-white' : 'bg-surface border'}`}>DNI</button>
+            </div>
+            <input type="text" inputMode="numeric" value={identifierValue} onChange={(e) => setIdentifierValue(e.target.value)} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" placeholder={identifierType === 'LEGAJO' ? 'Nº de Legajo' : 'Nº de DNI'} />
+          </div>
+
+          <Button type="submit" disabled={submitting || !playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()} className="mt-4 h-14 w-full">
             {submitting ? 'Iniciando...' : 'Comenzar'}
           </Button>
         </form>
-
-        <footer className="pt-4 border-t border-border/70 flex items-center justify-between text-xs text-muted">
-          <span className="font-bold tracking-wider uppercase text-[10px]">
-            Tutorías · UTN FRRe
-          </span>
-          <span className="font-mono text-[10px] text-muted/70">
-            Resistencia, Chaco
-          </span>
-        </footer>
       </main>
     </MobileShell>
   )
 }
+
 
 function WrongCheckpointScreen({ onBack }: { onBack: () => void }) {
   return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-8"><h1 className="text-2xl font-black">Este no es tu próximo punto.</h1><p className="mt-3 text-muted">Volvé a leer la pista y buscá el QR correcto.</p><Button className="mt-6" onClick={onBack}>Ver mi pista</Button></main></MobileShell>
@@ -300,6 +298,7 @@ function ChallengeScreen({ state, onResult }: { state: Extract<GameState, { stat
   const [answer, setAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [confirmHint, setConfirmHint] = useState(false)
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (!answer.trim()) return
@@ -308,5 +307,5 @@ function ChallengeScreen({ state, onResult }: { state: Extract<GameState, { stat
     catch { setError('No se pudo enviar la respuesta. Intentá nuevamente.') }
     finally { setSubmitting(false) }
   }
-  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-7 pb-8"><p className="text-xs font-bold text-brand uppercase">Desafío {state.stepNumber} de {state.totalSteps}</p><h1 className="mt-3 text-xl font-bold">{state.question}</h1>{state.state === 'ANSWER_INCORRECT' && <p className="mt-4 text-red-600">La respuesta no es correcta. Probá otra vez.</p>}{error && <p className="mt-4 text-red-600">{error}</p>}<form className="mt-6 flex flex-col gap-3" onSubmit={submit}><input className="border rounded p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" /><Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button></form></main></MobileShell>
+  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-7 pb-8"><div className="flex justify-between"><p className="text-xs font-bold text-brand uppercase">Desafío {state.stepNumber} de {state.totalSteps}</p><p className="text-xs font-bold">Puntos: {state.score}</p></div><p className="mt-1 text-xs text-muted">Correcta +100 · Incorrecta -10 · Pista -5</p><h1 className="mt-3 text-xl font-bold">{state.question}</h1>{state.state === 'ANSWER_INCORRECT' && <p className="mt-4 text-red-600">La respuesta no es correcta. Probá otra vez.</p>}{state.hint && <p className="mt-4 rounded bg-blue-50 p-3 text-sm">Pista: {state.hint}</p>}{state.hasHint && !confirmHint && <button className="mt-4 rounded border px-3 py-2 text-sm font-bold" onClick={() => setConfirmHint(true)}>Ver pista (-5 puntos)</button>}{confirmHint && <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>Revelar esta pista descuenta 5 puntos. ¿Continuar?</p><button className="mt-2 rounded bg-amber-700 px-3 py-2 text-white" onClick={async () => { try { onResult(await revealQuestionHint()) } catch { setError('No se pudo revelar la pista.') } }}>Revelar pista (-5)</button><button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button></div>}{error && <p className="mt-4 text-red-600">{error}</p>}<form className="mt-6 flex flex-col gap-3" onSubmit={submit}><input className="border rounded p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" /><Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button></form></main></MobileShell>
 }

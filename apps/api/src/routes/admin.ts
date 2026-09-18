@@ -114,9 +114,9 @@ adminRoutes.get('/challenges', async (c) => {
 adminRoutes.post('/challenges', zValidator('json', challengeSchema), async (c) => {
   const data = c.req.valid('json')
   const result = await c.env.DB.prepare(`
-    INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, hint_text, active)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(data.checkpoint_id, data.question_text, JSON.stringify(data.accepted_answers), data.hint_text, data.active).run()
+    INSERT INTO challenges (checkpoint_id, question_text, accepted_answers, hint_text, active, needs_review, review_note)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(data.checkpoint_id, data.question_text, JSON.stringify(data.accepted_answers), data.hint_text, data.active, data.needs_review ?? 0, data.review_note ?? null).run()
   return c.json({ id: result.meta.last_row_id })
 })
 
@@ -124,9 +124,9 @@ adminRoutes.put('/challenges/:id', zValidator('json', challengeSchema), async (c
   const id = parseInt(c.req.param('id'))
   const data = c.req.valid('json')
   await c.env.DB.prepare(`
-    UPDATE challenges SET checkpoint_id = ?, question_text = ?, accepted_answers = ?, hint_text = ?, active = ?
+    UPDATE challenges SET checkpoint_id = ?, question_text = ?, accepted_answers = ?, hint_text = ?, active = ?, needs_review = ?, review_note = ?
     WHERE id = ?
-  `).bind(data.checkpoint_id, data.question_text, JSON.stringify(data.accepted_answers), data.hint_text, data.active, id).run()
+  `).bind(data.checkpoint_id, data.question_text, JSON.stringify(data.accepted_answers), data.hint_text, data.active, data.needs_review ?? 0, data.review_note ?? null, id).run()
   return c.json({ success: true })
 })
 
@@ -176,6 +176,7 @@ adminRoutes.post('/reset', async (c) => {
   // Hard delete participant-generated data
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM hint_usage'),
+    c.env.DB.prepare('DELETE FROM question_hint_usage'),
     c.env.DB.prepare('DELETE FROM scan_events'),
     c.env.DB.prepare('DELETE FROM answer_attempts'),
     c.env.DB.prepare('DELETE FROM session_challenge_assignments'),

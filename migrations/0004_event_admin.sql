@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS event_settings (
   event_name TEXT NOT NULL DEFAULT 'Búsqueda del Tesoro',
   points_per_correct INTEGER NOT NULL DEFAULT 100,
   wrong_answer_penalty INTEGER NOT NULL DEFAULT 10,
-  hint_penalty INTEGER NOT NULL DEFAULT 20,
+  hint_penalty INTEGER NOT NULL DEFAULT 5,
   minimum_expected_completion_minutes INTEGER NOT NULL DEFAULT 5,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

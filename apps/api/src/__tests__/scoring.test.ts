@@ -5,6 +5,7 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rmSync } from 'node:fs'
+import { calculateScore } from '../lib/scoring.js'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const API_ROOT = join(__dirname, '..', '..')
@@ -21,7 +22,9 @@ function applyMigrationsAndSeed() {
     'migrations/0004_event_admin.sql',
     'migrations/0005_participants_session_order.sql',
     'migrations/0006_checkpoint_clues.sql',
-    'migrations/test_seed.sql'
+    'migrations/0007_cooldown_and_career.sql',
+    'migrations/0008_production_scoring_and_review.sql',
+    'seed/test_seed.sql'
   ]
   for (const file of migrations) {
     execSync(`${wranglerCmd}${join(REPO_ROOT, file)}`, { stdio: 'ignore' })
@@ -134,6 +137,9 @@ afterAll(async () => {
 })
 
 describe('Scoring & Ranking Rules', () => {
+  it('applies the approved voluntary question-hint penalty separately from a wrong answer', () => {
+    expect(calculateScore(1, 1, 1)).toBe(85)
+  })
   it('A/B/C player scenario', async () => {
     // Player A: complete all questions first attempt
     await play('Player A', 0, 0)
@@ -146,7 +152,7 @@ describe('Scoring & Ranking Rules', () => {
     await worker.fetch('/api/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName: 'Player D', identifierType: 'LEGAJO', identifierValue: 'Player D ' + Math.floor(Math.random() * 10000), startToken: TOKEN_START })
+      body: JSON.stringify({ playerName: 'Player D', lastName: 'Test', career: 'ISI', identifierType: 'LEGAJO', identifierValue: 'Player D ' + Math.floor(Math.random() * 10000), startToken: TOKEN_START })
     })
 
     // Play one that goes negative to verify floor
@@ -160,10 +166,10 @@ describe('Scoring & Ranking Rules', () => {
     const ranking = data.ranking
     expect(ranking.length).toBe(4) // A, B, C, Negative (D is active)
 
-    const playerA = ranking.find((p: any) => p.playerName === 'Player A')
-    const playerB = ranking.find((p: any) => p.playerName === 'Player B')
-    const playerC = ranking.find((p: any) => p.playerName === 'Player C')
-    const playerNeg = ranking.find((p: any) => p.playerName === 'Player Negative')
+    const playerA = ranking.find((p: any) => p.playerName === 'Player A Test')
+    const playerB = ranking.find((p: any) => p.playerName === 'Player B Test')
+    const playerC = ranking.find((p: any) => p.playerName === 'Player C Test')
+    const playerNeg = ranking.find((p: any) => p.playerName === 'Player Negative Test')
 
     expect(playerA.score).toBe(200) // 2 correct
     expect(playerB.score).toBe(190) // 2 correct, 1 wrong
@@ -179,6 +185,6 @@ describe('Scoring & Ranking Rules', () => {
     expect(playerNeg.rank).toBe(4)
 
     // Player D is not ranked
-    expect(data.active.find((p: any) => p.playerName === 'Player D')).toBeDefined()
+    expect(data.active.find((p: any) => p.playerName === 'Player D Test')).toBeDefined()
   })
 })

@@ -12,6 +12,8 @@ export const playerNameSchema = z
 // actually reached the physical Tutorías start QR.
 export const sessionStartSchema = z.object({
   playerName: playerNameSchema,
+  lastName: z.string().min(1, 'El apellido es obligatorio'),
+  career: z.string().min(1, 'La carrera es obligatoria'),
   identifierType: z.enum(['LEGAJO', 'DNI']),
   identifierValue: z.string().min(1, 'La identificación no puede estar vacía.'),
   /** Opaque token from the start checkpoint QR. Server validates this. */
@@ -57,6 +59,8 @@ export const challengeSchema = z.object({
   accepted_answers: z.array(z.string().min(1)).min(1),
   hint_text: z.string().nullable(),
   active: z.number().int().min(0).max(1),
+  needs_review: z.number().int().min(0).max(1).optional(),
+  review_note: z.string().nullable().optional(),
 })
 export type ChallengeDto = z.infer<typeof challengeSchema>
 

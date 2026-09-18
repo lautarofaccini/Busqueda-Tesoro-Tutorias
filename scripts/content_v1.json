@@ -1,0 +1,95 @@
+{
+  "version": "1.0",
+  "checkpoints": [
+    {
+      "name": "TUTORÍAS",
+      "is_start": true,
+      "instruction": null,
+      "navigation_riddle": "El viaje inicia en el departamento de Tutorías.",
+      "questions": [
+        {
+          "text": "¿En qué departamento te encontrás actualmente?",
+          "canonicalAnswer": "tutorias",
+          "aliases": ["tutoría", "tutorias", "departamento de tutorias"],
+          "hint": "Prestá atención al cartel de la puerta.",
+          "confirmed": true
+        }
+      ]
+    },
+    {
+      "name": "CANTINA",
+      "is_start": false,
+      "instruction": "Mantené el orden y no interrumpas el servicio.",
+      "navigation_riddle": "Buscá el lugar donde el café despierta a los futuros ingenieros.",
+      "questions": [
+        {
+          "text": "¿Cuál es la bebida más vendida en la mañana?",
+          "canonicalAnswer": "cafe",
+          "aliases": ["café"],
+          "hint": "Negro, caliente, te mantiene despierto.",
+          "confirmed": false
+        }
+      ]
+    },
+    {
+      "name": "CET",
+      "is_start": false,
+      "instruction": null,
+      "navigation_riddle": "El centro de los estudiantes, donde las ideas toman forma y se defienden derechos.",
+      "questions": [
+        {
+          "text": "¿Qué significan las siglas CET?",
+          "canonicalAnswer": "centro de estudiantes tecnologicos",
+          "aliases": ["centro de estudiantes tecnológicos"],
+          "hint": "Es el órgano de representación estudiantil.",
+          "confirmed": true
+        }
+      ]
+    },
+    {
+      "name": "ENTRADA A AULA MAGNA",
+      "is_start": false,
+      "instruction": "Hacé silencio si hay un evento o clase en curso.",
+      "navigation_riddle": "Donde las grandes conferencias y actos toman lugar, al pie de las escaleras principales.",
+      "questions": [
+        {
+          "text": "¿Qué evento importante se hace al finalizar la carrera y tiene lugar aquí?",
+          "canonicalAnswer": "colacion",
+          "aliases": ["colación", "entrega de diplomas", "acto de colacion"],
+          "hint": "Implica recibir un diploma.",
+          "confirmed": true
+        }
+      ]
+    },
+    {
+      "name": "BIBLIOTECA",
+      "is_start": false,
+      "instruction": "Estás entrando a un espacio de estudio. Realizá la actividad en silencio y sin molestar a quienes estén trabajando.",
+      "navigation_riddle": "El santuario del conocimiento, lleno de libros y silencio absoluto.",
+      "questions": [
+        {
+          "text": "Un pueblo culto nunca podrá ser esclavizado",
+          "canonicalAnswer": "manuel belgrano",
+          "aliases": ["belgrano", "general belgrano"],
+          "hint": "Prócer argentino que creó la bandera.",
+          "confirmed": true
+        }
+      ]
+    },
+    {
+      "name": "TERRAZA",
+      "is_start": false,
+      "instruction": null,
+      "navigation_riddle": "Subí a lo más alto para tener una vista despejada del cielo chaqueño.",
+      "questions": [
+        {
+          "text": "¿Qué elemento abunda en este lugar al aire libre?",
+          "canonicalAnswer": "sol",
+          "aliases": ["luz", "aire"],
+          "hint": "Es de día y hace calor.",
+          "confirmed": false
+        }
+      ]
+    }
+  ]
+}

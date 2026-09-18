@@ -21,6 +21,7 @@
     "db:migrate:local": "npm run db:migrate:local -w apps/api",
     "db:seed:local": "npm run db:seed:local -w apps/api",
     "db:reset:local": "npm run db:reset:local -w apps/api"
+    ,"content:import:remote": "node scripts/import-content.mjs --remote --database busqueda-tesoro-tutorias-prod"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

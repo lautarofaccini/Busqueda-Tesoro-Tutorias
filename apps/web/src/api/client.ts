@@ -67,6 +67,10 @@ export async function submitAnswer(
   })
 }
 
-export async function revealHint(): Promise<GameState> {
-  return apiFetch<GameState>('/api/game/hint', { method: 'POST' })
+export async function revealSecondaryHint(): Promise<GameState> {
+  return apiFetch<GameState>('/api/game/secondary-hint', { method: 'POST' })
+}
+
+export async function revealQuestionHint(): Promise<GameState> {
+  return apiFetch<GameState>('/api/game/question-hint', { method: 'POST' })
 }

@@ -223,7 +223,10 @@ export function CheckpointsAdmin() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Checkpoints y Preguntas</h2>
-        <button onClick={() => setAdding(true)} className="bg-green-600 text-white px-4 py-2 rounded font-bold">
+        <a href="/api/admin/qrs/export" target="_blank" rel="noopener noreferrer" className="bg-blue-600 text-white px-4 py-2 rounded font-bold mr-2">
+            Preparar Impresión
+          </a>
+          <button onClick={() => setAdding(true)} className="bg-green-600 text-white px-4 py-2 rounded font-bold">
           + Nuevo Checkpoint
         </button>
       </div>
@@ -409,7 +412,9 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
   const [data, setData] = useState({
     question_text: challenge.question_text,
     accepted_answers: challenge.accepted_answers.join(', '),
-    active: challenge.active
+    active: challenge.active,
+    needs_review: challenge.needs_review ?? 0,
+    review_note: challenge.review_note ?? ''
   })
 
   const save = async () => {
@@ -420,7 +425,9 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
         ...challenge,
         question_text: data.question_text,
         accepted_answers: data.accepted_answers.split(',').map((s:string) => s.trim()).filter(Boolean),
-        active: data.active ? 1 : 0
+        active: data.active ? 1 : 0,
+        needs_review: data.needs_review ? 1 : 0,
+        review_note: data.review_note || null
       })
     })
     setEditing(false)
@@ -443,6 +450,8 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
         <input className="border p-2 w-full rounded" value={data.question_text} onChange={e => setData({...data, question_text: e.target.value})} />
         <label className="font-bold text-xs text-neutral-600 uppercase mt-2">Respuestas Aceptadas (separadas por coma)</label>
         <input className="border p-2 w-full rounded" value={data.accepted_answers} onChange={e => setData({...data, accepted_answers: e.target.value})} />
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!data.needs_review} onChange={e => setData({...data, needs_review: e.target.checked ? 1 : 0})} /> Requiere revisión</label>
+        {data.needs_review && <input className="border p-2 w-full rounded" value={data.review_note} onChange={e => setData({...data, review_note: e.target.value})} placeholder="Nota de revisión" />}
         <div className="flex gap-2 mt-2">
           <button onClick={save} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Guardar</button>
           <button onClick={() => {
@@ -450,7 +459,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
             setData({
               question_text: challenge.question_text,
               accepted_answers: challenge.accepted_answers.join(', '),
-              active: challenge.active
+              active: challenge.active, needs_review: challenge.needs_review ?? 0, review_note: challenge.review_note ?? ''
             })
           }} className="px-4 py-2 text-sm border rounded bg-white hover:bg-neutral-100 font-bold text-neutral-600">Cancelar</button>
         </div>
@@ -462,6 +471,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
     <div className={`flex justify-between items-center p-4 border rounded shadow-sm ${challenge.active ? 'bg-white' : 'bg-neutral-50 opacity-75'}`}>
       <div className="flex-1">
         <p className="font-bold text-neutral-800 mb-1">{challenge.question_text}</p>
+        {challenge.needs_review ? <><span className="inline-block bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded font-bold">REVISAR</span><p className="text-xs text-amber-800 mt-1">{challenge.review_note}</p></> : null}
         <div className="flex flex-wrap gap-1">
           {challenge.accepted_answers.map((ans: string, i: number) => (
             <span key={i} className="bg-neutral-100 text-neutral-600 text-xs px-2 py-1 rounded border font-mono">
@@ -497,7 +507,9 @@ function AddChallengeModal({ checkpointId, reload }: { checkpointId: number, rel
         question_text: data.q,
         accepted_answers: data.a.split(',').map(s => s.trim()).filter(Boolean),
         hint_text: null,
-        active: 1
+        active: 1,
+        needs_review: 0,
+        review_note: null
       })
     })
     setOpen(false)

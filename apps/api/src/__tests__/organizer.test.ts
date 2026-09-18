@@ -22,7 +22,9 @@ function applyMigrationsAndSeed() {
     'migrations/0004_event_admin.sql',
     'migrations/0005_participants_session_order.sql',
     'migrations/0006_checkpoint_clues.sql',
-    'migrations/test_seed.sql'
+    'migrations/0007_cooldown_and_career.sql',
+    'migrations/0008_production_scoring_and_review.sql',
+    'seed/test_seed.sql'
   ]
 
   for (const file of migrations) {

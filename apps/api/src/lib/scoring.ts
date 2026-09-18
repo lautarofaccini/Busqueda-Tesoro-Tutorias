@@ -4,7 +4,7 @@
 export const SCORING_CONFIG = {
   POINTS_PER_CORRECT: 100,
   PENALTY_WRONG: 10,
-  PENALTY_HINT: 20, // Not yet implemented, but here conceptually
+  PENALTY_HINT: 5,
 }
 
 export function calculateScore(correctCount: number, wrongCount: number, hintCount: number = 0): number {

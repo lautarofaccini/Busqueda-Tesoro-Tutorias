@@ -350,7 +350,7 @@ export async function getOrganizerResults(db: D1Database) {
       (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
       IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount,
-      (SELECT COUNT(*) FROM hint_usage h WHERE h.session_id = s.id) as hintsUsed
+      (SELECT COUNT(*) FROM question_hint_usage h WHERE h.session_id = s.id) as hintsUsed
     FROM sessions s
     JOIN participants p ON s.participant_id = p.id
     LEFT JOIN answer_attempts a ON s.id = a.session_id
@@ -373,14 +373,16 @@ export async function createParticipant(
   db: D1Database,
   opts: {
     displayName: string
+    lastName?: string
+    career?: string
     identifierType: string
     identifierHash: string
     identifierSuffix: string
   }
 ): Promise<number> {
   const result = await db.prepare(
-    'INSERT INTO participants (display_name, identifier_type, identifier_hash, identifier_suffix) VALUES (?, ?, ?, ?)'
-  ).bind(opts.displayName, opts.identifierType, opts.identifierHash, opts.identifierSuffix).run();
+    'INSERT INTO participants (display_name, last_name, career, identifier_type, identifier_hash, identifier_suffix) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(opts.displayName, opts.lastName ?? null, opts.career ?? null, opts.identifierType, opts.identifierHash, opts.identifierSuffix).run();
   return result.meta.last_row_id as number;
 }
 
@@ -392,4 +394,22 @@ export async function hasUsedHint(db: D1Database, sessionId: number, position: n
 
 export async function logHintUsage(db: D1Database, sessionId: number, position: number): Promise<void> {
   await db.prepare('INSERT OR IGNORE INTO hint_usage (session_id, step_position) VALUES (?, ?)').bind(sessionId, position).run();
+}
+
+export async function hasUsedQuestionHint(db: D1Database, sessionId: number, challengeId: number): Promise<boolean> {
+  return !!await db.prepare('SELECT 1 FROM question_hint_usage WHERE session_id = ? AND challenge_id = ?').bind(sessionId, challengeId).first()
+}
+
+export async function logQuestionHintUsage(db: D1Database, sessionId: number, challengeId: number): Promise<void> {
+  await db.prepare('INSERT OR IGNORE INTO question_hint_usage (session_id, challenge_id) VALUES (?, ?)').bind(sessionId, challengeId).run()
+}
+
+export async function getSessionScore(db: D1Database, sessionId: number): Promise<number> {
+  const counts = await db.prepare(`SELECT
+    (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 1) AS correct_count,
+    (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 0) AS wrong_count,
+    (SELECT COUNT(*) FROM question_hint_usage WHERE session_id = ?) AS hint_count
+  `).bind(sessionId, sessionId, sessionId).first<{ correct_count: number; wrong_count: number; hint_count: number }>()
+  const settings = await getEventSettings(db) as { points_per_correct?: number; wrong_answer_penalty?: number; hint_penalty?: number } | null
+  return Math.max(0, (counts?.correct_count ?? 0) * (settings?.points_per_correct ?? 100) - (counts?.wrong_count ?? 0) * (settings?.wrong_answer_penalty ?? 10) - (counts?.hint_count ?? 0) * (settings?.hint_penalty ?? 5))
 }

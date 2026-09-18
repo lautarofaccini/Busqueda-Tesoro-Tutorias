@@ -29,6 +29,9 @@ import {
   getAssignedChallenge,
   logAnswerAttempt,
   advanceStep,
+  hasUsedHint,
+  hasUsedQuestionHint,
+  getSessionScore,
   completeSession,
   getSessionTotalSteps,
   getEventSettings,
@@ -84,7 +87,17 @@ answerRoutes.post(
       return c.json({ error: 'CHALLENGE_NOT_CURRENT' }, 403)
     }
 
+    // Cooldown logic
+    const lastAttempt = await c.env.DB.prepare('SELECT correct, attempted_at FROM answer_attempts WHERE session_id = ? AND challenge_id = ? ORDER BY id DESC LIMIT 1').bind(session.id, challengeId).first();
+    if (lastAttempt && lastAttempt.correct === 0) {
+      const msSince = Date.now() - new Date(lastAttempt.attempted_at as string).getTime();
+      if (msSince < 10000) {
+        return c.json({ error: 'COOLDOWN_ACTIVE', remainingSeconds: Math.ceil((10000 - msSince) / 1000) }, 429)
+      }
+    }
+
     // 5. Normalize and compare
+
     const acceptedAnswers = JSON.parse(assignedChallenge.accepted_answers) as string[]
     const [canonical, ...aliases] = acceptedAnswers
     const isCorrect = matchesAcceptedAnswers(answer, canonical ?? '', aliases)
@@ -100,6 +113,8 @@ answerRoutes.post(
     const totalSteps = await getSessionTotalSteps(c.env.DB, session.id)
 
     if (!isCorrect) {
+      const usedHint = await hasUsedQuestionHint(c.env.DB, session.id, assignedChallenge.id)
+      const score = await getSessionScore(c.env.DB, session.id)
       // No advancement, unlock preserved
       return c.json({
         state: 'ANSWER_INCORRECT',
@@ -108,9 +123,13 @@ answerRoutes.post(
         stepNumber: session.current_step,
         totalSteps,
         playerName: session.player_name,
-        // accepted_answers deliberately omitted
+        score,
+        hasHint: !!assignedChallenge.hint_text && !usedHint,
+        hint: usedHint ? assignedChallenge.hint_text : undefined,
+        cooldownRemaining: 10,
       })
     }
+
 
     // Correct answer
     const isLastStep = session.current_step >= totalSteps

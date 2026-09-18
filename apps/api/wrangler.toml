@@ -1,9 +1,13 @@
 # Cloudflare Worker — busqueda-tesoro-api
 # Phase 1: local walking skeleton — D1 enabled for local dev.
 
-name = "busqueda-tesoro-api"
+name = "busqueda-tesoro-tutorias"
 main = "src/index.ts"
 compatibility_date = "2024-09-01"
+
+# One same-origin Worker deployment: API runs first for /api/*; all React
+# routes use the static SPA fallback. `apps/web/dist` is produced by npm run build.
+assets = { directory = "../web/dist", not_found_handling = "single-page-application", run_worker_first = ["/api/*", "/health"] }
 
 # D1 database binding.
 # database_id is a placeholder UUID — only used for local dev via --local flag.
@@ -17,3 +21,16 @@ migrations_dir = "../../migrations"
 
 [vars]
 ENVIRONMENT = "development"
+
+[env.production]
+name = "busqueda-tesoro-tutorias"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "busqueda-tesoro-tutorias-prod"
+# Replace this placeholder only after `wrangler d1 create busqueda-tesoro-tutorias-prod`.
+database_id = "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID"
+migrations_dir = "../../migrations"

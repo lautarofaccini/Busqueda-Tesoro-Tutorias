@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { GameState } from '@busqueda-tesoro/shared'
-import { getGameState, revealHint } from '../api/client'
+import { getGameState, revealSecondaryHint } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
@@ -68,7 +68,7 @@ export function GameScreen() {
   const handleRevealHint = async () => {
     setLoadingHint(true)
     try {
-      const newState = await revealHint()
+      const newState = await revealSecondaryHint()
       setGameState(newState)
     } finally {
       setLoadingHint(false)
@@ -92,12 +92,13 @@ export function GameScreen() {
                 MISIÓN {stepNumber} DE {totalSteps}
               </span>
             </div>
-            <span className="text-xs font-mono font-semibold text-muted">EN CURSO</span>
+            <span className="text-xs font-mono font-semibold text-muted">Puntos: {state.score}</span>
           </div>
 
           <h1 className="text-2xl font-black text-foreground tracking-tight leading-tight">
             Tu próxima pista
           </h1>
+          <p className="mt-1 text-xs text-muted">Correcta +100 · Incorrecta -10 · Pista -5</p>
           <div className="flex items-center gap-1.5 mt-2.5 mb-5" aria-hidden="true">
             <div className="h-1 w-12 bg-brand rounded-full" />
             <div className="h-1 w-4 bg-yellow rounded-full" />

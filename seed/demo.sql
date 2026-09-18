@@ -4,8 +4,8 @@
 --
 
 -- ── Event Settings ──────────────────────────────────────────────────────────
-INSERT OR REPLACE INTO event_settings (id, status, event_name, points_per_correct, wrong_answer_penalty) 
-VALUES (1, 'LIVE', '[DEMO] Evento de Prueba LAN', 10, 2);
+INSERT OR REPLACE INTO event_settings (id, status, event_name, points_per_correct, wrong_answer_penalty, hint_penalty) 
+VALUES (1, 'LIVE', '[DEMO] Evento de Prueba LAN', 100, 10, 5);
 
 -- ── Checkpoints ─────────────────────────────────────────────────────────────
 INSERT INTO checkpoints (id, token, sequence_order, label, is_start, active, primary_clue) VALUES

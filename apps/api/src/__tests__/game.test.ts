@@ -88,10 +88,12 @@ function applyMigrationsAndSeed() {
     `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0006_checkpoint_clues.sql`,
     opts
   )
+  execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0007_cooldown_and_career.sql`, opts)
+  execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0008_production_scoring_and_review.sql`, opts)
 
   // Apply seed
   execSync(
-    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/test_seed.sql`,
+    `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../seed/test_seed.sql`,
     opts
   )
 }
@@ -152,7 +154,7 @@ async function startSession(playerName: string, startToken: string) {
     const res = await worker.fetch('/api/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName, identifierType: 'LEGAJO', identifierValue: playerName + suffix, startToken }),
+      body: JSON.stringify({ playerName, lastName: 'Test', career: 'ISI', identifierType: 'LEGAJO', identifierValue: playerName + suffix, startToken }),
     });
     if (res.status >= 400) {
       console.error("START SESSION FAILED", await res.clone().text());
@@ -244,18 +246,17 @@ describe('POST /api/session/start', () => {
     expect(res.status).toBe(400)
   })
 
-  it('valid startToken creates session and returns ACTIVE with first clue', async () => {
-    const res = await startSession('Ana', TOKEN_START)
-    expect(res.status).toBe(201)
-    const setCookie = getCookieFromResponse(res)
-    expect(setCookie).not.toBeNull()
-    expect(setCookie).toContain('HttpOnly')
-    expect(setCookie).toContain('SameSite=Lax')
+  it('valid startToken creates session and returns CHALLENGE with first clue', async () => {
+      const res = await startSession('Ana', TOKEN_START)
+      expect(res.status).toBe(201)
+      const setCookie = getCookieFromResponse(res)
+      expect(setCookie).not.toBeNull()
+      expect(setCookie).toContain('HttpOnly')
 
-    const body = await res.json() as { state: string; clue: string; stepNumber: number; totalSteps: number }
-    expect(body.state).toBe('ACTIVE')
-    expect(body.clue).toContain('[DEMO]')
-    expect(body.stepNumber).toBe(1)  // first step
+      const body = await res.json() as any
+      expect(body.state).toBe('CHALLENGE')
+      expect(body.question).toContain('[DEMO]')
+      expect(body.stepNumber).toBe(1)  // first step
     expect(body.totalSteps).toBe(2)  // 2 demo steps total
   })
 
@@ -379,9 +380,8 @@ describe('Answer submission', () => {
   async function setupWithChallengeA() {
     const res = await startSession('Sofia', TOKEN_START)
     const cookie = extractSessionCookie(getCookieFromResponse(res)!)
-    const scanRes = await scanNext(cookie)
-    const { challengeId } = await scanRes.json() as { challengeId: number }
-    return { cookie, challengeId }
+    const body = await res.clone().json() as { challengeId: number }
+    return { cookie, challengeId: body.challengeId }
   }
 
   it('wrong answer does not advance step', async () => {
@@ -456,7 +456,7 @@ describe('Full game completion', () => {
     const finalRes = await submitAnswer(cB, DEMO_ANSWERS[cB].canonical, cookie)
     const body = await finalRes.json() as { state: string; playerName: string; completedAt: string }
     expect(body.state).toBe('COMPLETED')
-    expect(body.playerName).toBe('Valentina')
+    expect(body.playerName).toBe('Valentina Test')
     expect(typeof body.completedAt).toBe('string')
   })
 
