@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { OrganizerView } from './OrganizerView'
+import { generateBulkQRPdf, generateSingleQRPdf } from '../lib/pdf'
 
 export function AdminView() {
   const [activeTab, setActiveTab] = useState('resumen')
@@ -267,9 +268,9 @@ export function CheckpointsAdmin() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">Checkpoints y Preguntas</h2>
-        <a href="/api/admin/qrs/export" target="_blank" rel="noopener noreferrer" className="bg-blue-600 text-white px-4 py-2 rounded font-bold mr-2">
+        <button onClick={() => generateBulkQRPdf(checkpoints)} className="bg-blue-600 text-white px-4 py-2 rounded font-bold mr-2">
             Preparar Impresión
-          </a>
+          </button>
           <button onClick={() => setAdding(true)} className="bg-green-600 text-white px-4 py-2 rounded font-bold">
           + Nuevo Checkpoint
         </button>
@@ -334,7 +335,7 @@ function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: 
     }
   }
 
-  const qrTargetUrl = `${window.location.origin}/q/${checkpoint.token}`
+  const qrTargetUrl = `https://tesoro.tutorias-frre.workers.dev/q/${checkpoint.token}`
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(qrTargetUrl)}&format=svg`
   const [showQr, setShowQr] = useState(false)
 
@@ -351,9 +352,9 @@ function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: 
           <span className="text-sm text-neutral-500 font-medium">{challenges.length} preguntas</span>
         </div>
         
-        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
           <button onClick={() => setShowQr(true)} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 font-medium">Ver QR</button>
-          <a href={qrImageUrl} download={`${checkpoint.label.replace(/\s+/g, '-')}.svg`} onClick={event => event.stopPropagation()} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 font-medium">Descargar QR</a>
+          <button onClick={event => { event.stopPropagation(); generateSingleQRPdf(checkpoint); }} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 font-medium">Descargar QR</button>
           <button onClick={regenerateQR} className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 font-medium">Regenerar QR</button>
           <button onClick={toggleActive} className={`text-sm px-3 py-1 rounded text-white font-medium ${checkpoint.active ? 'bg-neutral-500 hover:bg-neutral-600' : 'bg-green-600 hover:bg-green-700'}`}>
             {checkpoint.active ? 'Desactivar' : 'Activar'}
@@ -439,12 +440,14 @@ function CheckpointCard({ checkpoint, challenges, expanded, onToggle, reload }: 
         </div>
       )}
       {showQr && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={`QR de ${checkpoint.label}`} onClick={() => setShowQr(false)}>
-        <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-xl" onClick={event => event.stopPropagation()}>
-          <h4 className="text-lg font-bold">{checkpoint.is_start ? 'INICIO · ' : ''}{checkpoint.label}</h4>
-          <p className="mt-1 text-sm text-neutral-500">QR actual del checkpoint</p>
+        <div className="w-full max-w-sm rounded-lg bg-white p-5 text-center shadow-xl" onClick={event => event.stopPropagation()}>
+          <p className="text-sm font-bold uppercase tracking-wider text-brand">Búsqueda del Tesoro</p>
+          <h4 className="mt-1 text-lg font-bold">{checkpoint.is_start ? 'INICIO · ' : ''}{checkpoint.label}</h4>
+          <p className="mt-1 text-sm text-neutral-500">Escaneá acá</p>
           <p className="mt-3 rounded bg-amber-50 p-3 text-sm font-bold text-amber-900">¿No podés escanear? Código: {checkpoint.fallback_code || 'Pendiente de migración'}</p>
           <img src={qrImageUrl} alt={`Código QR de ${checkpoint.label}`} className="mx-auto my-5 h-64 w-64" />
-          <div className="flex justify-center gap-3"><a href={qrImageUrl} download={`${checkpoint.label.replace(/\s+/g, '-')}.svg`} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white">Descargar QR</a><button type="button" onClick={() => setShowQr(false)} className="rounded border px-4 py-2 text-sm font-bold">Cerrar</button></div>
+          <p className="break-all text-xs text-neutral-500">{qrTargetUrl}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-3"><button onClick={() => generateSingleQRPdf(checkpoint)} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white">Descargar QR</button><button type="button" onClick={() => setShowQr(false)} className="rounded border px-4 py-2 text-sm font-bold">Cerrar</button></div>
         </div>
       </div>}
     </div>

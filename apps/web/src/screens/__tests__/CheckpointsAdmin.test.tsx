@@ -68,7 +68,7 @@ describe('CheckpointsAdmin accordion and QR actions', () => {
     const user = await setup()
     await user.click(screen.getAllByText('Ver QR')[0]!)
     const image = screen.getByAltText('Código QR de Checkpoint A') as HTMLImageElement
-    expect(image.src).toContain(encodeURIComponent(`${window.location.origin}/q/token-a`))
+    expect(image.src).toContain(encodeURIComponent('https://tesoro.tutorias-frre.workers.dev/q/token-a'))
     expect(global.fetch).not.toHaveBeenCalledWith('/api/admin/checkpoints/11/token', expect.anything())
     expect(screen.getAllByText('Descargar QR').length).toBeGreaterThan(0)
   })

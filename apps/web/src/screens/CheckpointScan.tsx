@@ -6,6 +6,7 @@ import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswer
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { Button } from '../components/Button'
+import { ScoreDisplay } from '../components/ScoreDisplay'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
 
 /**
@@ -297,13 +298,71 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [confirmHint, setConfirmHint] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'success'>('idle')
+
+  const [phase, setPhase] = useState<'A' | 'B'>('A')
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    // If we've already answered incorrectly, or have hints, skip phase A
+    if (state.state === 'ANSWER_INCORRECT' || state.hasHint || state.hint || prefersReducedMotion) {
+      setPhase('B')
+    } else {
+      const timer = setTimeout(() => setPhase('B'), 650)
+      return () => clearTimeout(timer)
+    }
+  }, [state.challengeId, state.state, state.hasHint, state.hint])
+
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (!answer.trim()) return
     setSubmitting(true); setError('')
-    try { onResult(await submitAnswer(state.challengeId, { answer: answer.trim() })) }
-    catch { setError('No se pudo enviar la respuesta. Intentá nuevamente.') }
-    finally { setSubmitting(false) }
+    try {
+      const next = await submitAnswer(state.challengeId, { answer: answer.trim() })
+      if (next.state === 'ADVANCED' || next.state === 'COMPLETED') {
+        setStatus('success')
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        setTimeout(() => onResult(next), reducedMotion ? 0 : 700)
+      } else {
+        onResult(next)
+        setSubmitting(false)
+      }
+    }
+    catch { setError('No se pudo enviar la respuesta. Intentá nuevamente.'); setSubmitting(false) }
   }
-  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-7 pb-8"><div className="flex justify-between"><p className="text-xs font-bold text-brand uppercase">{state.stepNumber === 0 ? 'Desafío inicial' : `Desafío ${state.stepNumber} de ${state.totalSteps}`}</p><p className="text-xs font-bold">Puntos: {state.score}</p></div><p className="mt-1 text-xs text-muted">Correcta +100 · Incorrecta -10 · Pista -5</p><h1 className="mt-3 text-xl font-bold">{state.question}</h1>{state.state === 'ANSWER_INCORRECT' && <><p className="mt-4 text-red-600">La respuesta no es correcta. Probá otra vez.</p>{state.attemptId && <button className="mt-3 text-sm font-bold underline" onClick={async () => { try { await submitAnswerReview(state.attemptId); setError('Tu revisión quedó pendiente.') } catch { setError('No se pudo solicitar la revisión.') } }}>Creo que mi respuesta era correcta</button>}</>}{state.hint && <p className="mt-4 rounded bg-blue-50 p-3 text-sm">Pista: {state.hint}</p>}{state.hasHint && !confirmHint && <button className="mt-4 rounded border px-3 py-2 text-sm font-bold" onClick={() => setConfirmHint(true)}>Ver pista (-5 puntos)</button>}{confirmHint && <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>Revelar esta pista descuenta 5 puntos. ¿Continuar?</p><button className="mt-2 rounded bg-amber-700 px-3 py-2 text-white" onClick={async () => { try { onResult(await revealQuestionHint()) } catch { setError('No se pudo revelar la pista.') } }}>Revelar pista (-5)</button><button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button></div>}{error && <p className="mt-4 text-red-600">{error}</p>}<form className="mt-6 flex flex-col gap-3" onSubmit={submit}><input className="border rounded p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" /><Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button></form></main></MobileShell>
+
+  if (status === 'success') {
+    return (
+      <MobileShell>
+        <BrandHeader />
+        <main onClick={() => setPhase('B')} className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
+          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+          </div>
+          <h1 className="text-2xl font-black text-foreground">¡Correcto!</h1>
+          <p className="mt-2 text-green-700 font-bold">+100 puntos</p>
+        </main>
+      </MobileShell>
+    )
+  }
+
+  if (phase === 'A') {
+    return (
+      <MobileShell>
+        <BrandHeader />
+        <main className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
+          <div className="mb-4 inline-flex px-3 py-1 bg-amber-100 text-amber-900 text-sm font-black rounded uppercase tracking-widest">DESAFÍO</div>
+          <h1 className="text-3xl font-black text-foreground leading-tight">{state.question}</h1>
+        </main>
+      </MobileShell>
+    )
+  }
+
+  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-7 pb-8"><div className="flex justify-between"><p className="text-xs font-bold text-brand uppercase">{state.stepNumber === 0 ? 'Desafío inicial' : `Desafío ${state.stepNumber} de ${state.totalSteps}`}</p><p className="text-xs font-bold"><ScoreDisplay score={state.score} /></p></div><p className="mt-1 text-xs text-muted">Correcta +100 · Incorrecta -10 · Pista -5</p>
+
+  <div className="mt-6 p-6 bg-white border border-border shadow-sm rounded-xl animate-scale-in motion-reduce:animate-none">
+    <div className="mb-4 inline-flex px-2 py-1 bg-amber-100 text-amber-900 text-xs font-black rounded uppercase tracking-widest">DESAFÍO</div>
+    <h1 className="text-xl font-bold leading-snug">{state.question}</h1>
+  </div>{state.state === 'ANSWER_INCORRECT' && <><p className="mt-4 text-red-600">La respuesta no es correcta. Probá otra vez.</p>{state.attemptId && <button className="mt-3 text-sm font-bold underline" onClick={async () => { try { await submitAnswerReview(state.attemptId); setError('Tu revisión quedó pendiente.') } catch { setError('No se pudo solicitar la revisión.') } }}>Creo que mi respuesta era correcta</button>}</>}{state.hint && <p className="mt-4 rounded bg-blue-50 p-3 text-sm">Pista: {state.hint}</p>}{state.hasHint && !confirmHint && <button className="mt-4 rounded border px-3 py-2 text-sm font-bold" onClick={() => setConfirmHint(true)}>Ver pista (-5 puntos)</button>}{confirmHint && <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>Revelar esta pista descuenta 5 puntos. ¿Continuar?</p><button className="mt-2 rounded bg-amber-700 px-3 py-2 text-white" onClick={async () => { try { onResult(await revealQuestionHint()) } catch { setError('No se pudo revelar la pista.') } }}>Revelar pista (-5)</button><button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button></div>}{error && <p className="mt-4 text-red-600">{error}</p>}<form className="mt-6 flex flex-col gap-3 animate-scale-in motion-reduce:animate-none" onSubmit={submit}><input className="border rounded p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" autoFocus /><Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button></form></main></MobileShell>
 }

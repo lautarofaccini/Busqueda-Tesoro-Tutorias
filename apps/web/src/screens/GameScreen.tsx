@@ -6,6 +6,7 @@ import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
 import { ChallengeScreen } from './CheckpointScan'
+import { ScoreDisplay } from '../components/ScoreDisplay'
 
 /**
  * GameScreen — shown at /game.
@@ -24,6 +25,7 @@ export function GameScreen() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [fallbackCode, setFallbackCode] = useState('')
   const [helpMessage, setHelpMessage] = useState('')
+  const [fallbackOpen, setFallbackOpen] = useState(false)
 
   useEffect(() => {
     void getGameState()
@@ -105,7 +107,9 @@ export function GameScreen() {
                 MISIÓN {stepNumber} DE {totalSteps}
               </span>
             </div>
-            <span className="text-xs font-mono font-semibold text-muted">Puntos: {state.score}</span>
+            <span className="text-xs font-mono font-semibold text-muted">
+              <ScoreDisplay score={state.score} />
+            </span>
           </div>
 
           <h1 className="text-2xl font-black text-foreground tracking-tight leading-tight">
@@ -159,6 +163,11 @@ export function GameScreen() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true" />
                 <span>Buscá ese lugar y escaneá el QR para desbloquear el siguiente desafío.</span>
               </div>
+              <div className="mt-4">
+                <button onClick={() => { setFallbackCode(''); setHelpMessage(''); setFallbackOpen(true) }} className="w-full py-2 border border-brand text-brand hover:bg-brand hover:text-white font-bold rounded text-sm transition-colors">
+                  No puedo escanear el QR
+                </button>
+              </div>
               <button className="mt-4 text-sm font-bold text-brand underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button>
             </div>
           ) : (
@@ -169,8 +178,46 @@ export function GameScreen() {
             </div>
           )}
         </div>
+        {fallbackOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center bg-black/60 p-4">
+            <div className="w-full max-w-sm mx-auto rounded-xl bg-white p-6 shadow-xl">
+              <h2 className="text-xl font-bold mb-2">¿No podés escanear el QR?</h2>
+              <p className="text-sm text-muted mb-4">Escribí el código que aparece debajo del QR.</p>
+              <div className="flex flex-col gap-3">
+                <input
+                  className="rounded border p-3 uppercase text-lg text-center tracking-widest outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  value={fallbackCode}
+                  onChange={e => setFallbackCode(e.target.value)}
+                  placeholder="Ej: AB12"
+                  autoFocus
+                />
+                {helpMessage && <p className="text-sm text-red-600 font-bold text-center">{helpMessage}</p>}
+                <div className="flex gap-3 mt-2">
+                  <button className="flex-1 rounded border p-3 font-bold" onClick={() => setFallbackOpen(false)}>Cancelar</button>
+                  <button className="flex-1 rounded bg-brand p-3 font-bold text-white" onClick={async () => {
+                    if (!fallbackCode.trim()) return
+                    setHelpMessage('')
+                    try {
+                      const next = await submitFallbackCode(fallbackCode)
+                      if (next.state === 'WRONG_CHECKPOINT') {
+                        setHelpMessage('Este código no corresponde a tu próximo punto.')
+                      } else if (next.state === 'NEEDS_START') {
+                        setHelpMessage('Código inválido.')
+                      } else {
+                        setGameState(next)
+                        setFallbackOpen(false)
+                      }
+                    } catch {
+                      setHelpMessage('No se pudo validar el código.')
+                    }
+                  }}>Continuar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button className="rounded border p-3 text-left" onClick={() => { setHelpMessage('Si tu respuesta fue rechazada, podés pedir revisión desde la pantalla del desafío.') }}>Mi respuesta debería ser correcta</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_SCAN'); setHelpMessage('Avisamos al equipo de asistencia.') }}>No puedo escanear el QR</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_DAMAGED'); setHelpMessage('Avisamos al equipo de asistencia.') }}>El QR está dañado o no funciona</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('OTHER'); setHelpMessage('Avisamos al equipo de asistencia.') }}>Otro problema</button></div><div className="mt-4 border-t pt-3"><label className="text-sm font-bold">Ingresar código del checkpoint</label><div className="mt-2 flex gap-2"><input className="min-w-0 flex-1 rounded border p-2 uppercase" value={fallbackCode} onChange={e => setFallbackCode(e.target.value)} /><button className="rounded bg-brand px-3 text-white" onClick={async () => { try { const next = await submitFallbackCode(fallbackCode); setGameState(next); setHelpOpen(false) } catch { setHelpMessage('No se pudo validar el código.') } }}>Validar</button></div></div>{helpMessage && <p className="mt-3 text-sm">{helpMessage}</p>}<button className="mt-4 w-full rounded border p-2" onClick={() => setHelpOpen(false)}>Cerrar</button></div></div>}
+        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button className="rounded border p-3 text-left" onClick={() => { setHelpMessage('Si tu respuesta fue rechazada, podés pedir revisión desde la pantalla del desafío.') }}>Mi respuesta debería ser correcta</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_SCAN'); setHelpMessage('Avisamos al equipo de asistencia.') }}>No puedo escanear el QR</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_DAMAGED'); setHelpMessage('Avisamos al equipo de asistencia.') }}>El QR está dañado o no funciona</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('OTHER'); setHelpMessage('Avisamos al equipo de asistencia.') }}>Otro problema</button></div>{helpMessage && <p className="mt-3 text-sm text-brand font-bold">{helpMessage}</p>}<button className="mt-4 w-full rounded border p-2 font-bold" onClick={() => setHelpOpen(false)}>Cerrar</button></div></div>}
 
         {/* Player tag */}
         <div className="my-auto py-5 flex flex-col items-center justify-center text-center" aria-hidden="true">

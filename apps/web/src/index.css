@@ -31,7 +31,23 @@
   --color-border-warm: #E2D9CB;
   --color-success: #16A34A;
   --color-error: #DC2626;
+  --animate-slide-up-fade: slide-up-fade 2.5s ease-out forwards;
+  --animate-scale-in: scale-in 300ms ease-out both;
 }
+
+@keyframes slide-up-fade {
+  0% { opacity: 0; transform: translateY(10px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1.1); }
+  25% { transform: scale(1); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 
 html,
 body {

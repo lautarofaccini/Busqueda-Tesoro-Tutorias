@@ -23,7 +23,7 @@ migrations_dir = "../../migrations"
 ENVIRONMENT = "development"
 
 [env.production]
-name = "busqueda-tesoro-tutorias"
+name = "tesoro"
 
 [env.production.vars]
 ENVIRONMENT = "production"
