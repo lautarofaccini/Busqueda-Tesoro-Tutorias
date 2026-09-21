@@ -1,5 +1,8 @@
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { submitFallbackCode } from '../api/client'
 
 /**
  * PublicEntry — shown when someone opens the site without a valid QR.
@@ -8,6 +11,18 @@ import { BrandHeader } from '../components/BrandHeader'
  * information that could advance a player without physically scanning a QR.
  */
 export function PublicEntry() {
+  const navigate = useNavigate()
+  const [fallbackOpen, setFallbackOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [code, setCode] = useState('')
+  const [message, setMessage] = useState('')
+  const submit = async () => {
+    try {
+      const state = await submitFallbackCode(code.trim())
+      if (state.state === 'START_ALLOWED') void navigate(`/q/${state.startToken}`, { replace: true })
+      else setMessage('Ese código no permite iniciar la búsqueda.')
+    } catch { setMessage('No se pudo validar el código.') }
+  }
   return (
     <MobileShell>
       <BrandHeader />
@@ -37,6 +52,7 @@ export function PublicEntry() {
               Para comenzar, buscá el QR de inicio en Tutorías.
             </p>
           </div>
+          <div className="mt-4 flex flex-col gap-2"><button className="rounded border border-brand px-4 py-3 text-sm font-bold text-brand" onClick={() => { setMessage(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button className="text-sm font-bold text-brand underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button></div>
         </div>
 
         {/* Center: Subtle QR geometric motif (CSS only) */}
@@ -86,7 +102,8 @@ export function PublicEntry() {
           </span>
         </footer>
       </main>
+      {fallbackOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="text-xl font-bold">¿No podés escanear el QR?</h2><p className="mt-2 text-sm text-muted">Escribí el código que aparece debajo del QR de Tutorías.</p><input className="mt-4 w-full rounded border p-3 uppercase" value={code} onChange={e => setCode(e.target.value)} autoFocus />{message && <p className="mt-2 text-sm text-red-600">{message}</p>}<div className="mt-4 flex gap-2"><button className="flex-1 rounded border p-3" onClick={() => setFallbackOpen(false)}>Cancelar</button><button className="flex-1 rounded bg-brand p-3 font-bold text-white" onClick={() => void submit()}>Continuar</button></div></div></div>}
+      {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><button className="mt-3 w-full rounded border p-3 text-left" onClick={() => { setHelpOpen(false); setFallbackOpen(true) }}>No puedo escanear el QR</button><p className="mt-3 text-sm">Si el QR de Tutorías está dañado, fue quitado o no funciona, acercate a la oficina de Tutorías y te ayudamos a comenzar.</p><button className="mt-4 w-full rounded border p-2" onClick={() => setHelpOpen(false)}>Cerrar</button></div></div>}
     </MobileShell>
   )
 }
-

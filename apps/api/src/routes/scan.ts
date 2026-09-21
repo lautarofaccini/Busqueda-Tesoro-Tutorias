@@ -81,7 +81,7 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
         rawToken,
         outcome: 'START_ALLOWED',
       })
-      return c.json({ state: 'START_ALLOWED', startToken: rawToken })
+      return c.json({ state: 'START_ALLOWED', startToken: checkpoint.token })
     }
     await logScanEvent(c.env.DB, {
       sessionId: null,
@@ -105,7 +105,7 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
         rawToken,
         outcome: 'START_ALLOWED',
       })
-      return c.json({ state: 'START_ALLOWED', startToken: rawToken })
+      return c.json({ state: 'START_ALLOWED', startToken: checkpoint.token })
     }
     await logScanEvent(c.env.DB, {
       sessionId: null,
