@@ -1,11 +1,11 @@
 # Current State
 
-- **Current phase:** Production security hotfix prepared; production remains DRAFT.
+- **Current phase:** Final event hotfix prepared; production data remains untouched.
 - **Current active feature branch:** feat/admin-event-ops-lan-test
 - **What currently works:** Local Worker API, local D1, Vite proxy, server-side session, HttpOnly cookie, start QR gating, wrong-checkpoint protection, replay protection, persistent randomized question pools per checkpoint, scoring foundation, tie/rank logic, Checkpoint-first Admin Console, player identity onboarding (Legajo/DNI), duplicate participation blocking, invalidate/release participants, and event lifecycle controls.
-- **What is being built now:** Final audit correction pass for checkpoint clues, lifecycle blocking, and cleanup before a real-phone regression test.
+- **What is being built now:** Player success/review reconciliation and a limited `/asistencia` staff console using separate Cloudflare secrets and existing support tables.
 - **Known limitations:** Production content is intentionally still empty and all real navigation riddles remain pending organizer input. The full API test command retains legacy fixture/concurrency failures documented in the hotfix handoff.
-- **Next milestone:** Manually enroll organizer TOTP, set the new secret, deploy this branch, then import/review content while DRAFT.
+- **Next milestone:** Configure the two assistance secrets, deploy the Worker/assets only, and perform a production smoke test without migrations or content import.
 - **Do not work on yet:** PWA, advanced analytics.
 
 ## Current Phase

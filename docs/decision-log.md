@@ -61,6 +61,11 @@
 - *Decision:* Require `ORGANIZER_SECRET` and an independent RFC 6238-compatible six-digit TOTP secret. Authy is supported as a standard TOTP authenticator without an Authy API integration. Organizer cookies are signed, HttpOnly, same-site strict, secure in production, and expire after four hours.
 - *Status:* Accepted.
 
+**Limited event assistance role**
+- *Reason:* Tutors need to resolve answer reviews and physical QR incidents during the event without receiving full organizer privileges.
+- *Decision:* `/asistencia` uses separate `ASSISTANCE_USERNAME` and `ASSISTANCE_PASSWORD` Worker secrets, a signed four-hour HttpOnly/Strict cookie, and the existing login rate limiter. The role can only read the unified assistance feed and approve/reject/resolve its items; organizer CRUD, lifecycle, reset, content and QR-token endpoints continue to require the independent organizer TOTP session.
+- *Status:* Accepted.
+
 **LIVE content preflight**
 - *Reason:* Real navigation riddles and approved questions are operational requirements, not optional admin details.
 - *Decision:* The server refuses a transition to LIVE unless required checkpoint, riddle, question, review, and event configuration checks pass. Content remains editable in DRAFT and PAUSED.

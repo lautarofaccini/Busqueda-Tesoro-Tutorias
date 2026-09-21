@@ -5,6 +5,7 @@ import { sessionRoutes } from './routes/session.js'
 import { scanRoutes } from './routes/scan.js'
 import { answerRoutes } from './routes/answer.js'
 import { organizerRoutes } from './routes/organizer.js'
+import { assistanceRoutes } from './routes/assistance.js'
 import { adminRoutes } from './routes/admin.js'
 import { supportRoutes } from './routes/support.js'
 import type { Env } from './env.d'
@@ -34,6 +35,7 @@ app.route('/api/session', sessionRoutes)   // POST /api/session/start
 app.route('/api/scan', scanRoutes)         // POST /api/scan/:token
 app.route('/api/challenge', answerRoutes)  // POST /api/challenge/:challengeId/answer
 app.route('/api/organizer', organizerRoutes) // POST /login, GET /results
+app.route('/api/assistance', assistanceRoutes)
 app.route('/api/admin', adminRoutes)
 app.route('/api/support', supportRoutes)
 

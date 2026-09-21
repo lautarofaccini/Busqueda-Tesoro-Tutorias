@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { GameState, SessionStartRequest } from '@busqueda-tesoro/shared'
-import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview, getSupportStatus, getGameState } from '../api/client'
+import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview, submitSupport, getSupportStatus, getGameState } from '../api/client'
 import type { PlayerReviewStatus } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
@@ -297,8 +297,15 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   const [confirmHint, setConfirmHint] = useState(false)
   const [confirmReview, setConfirmReview] = useState(false)
   const [review, setReview] = useState<PlayerReviewStatus | null>(null)
-  const [reviewNotice, setReviewNotice] = useState('')
-  const [status, setStatus] = useState<'idle' | 'success'>('idle')
+  const [reviewNotice, setReviewNotice] = useState<{ reviewId: number; status: 'APPROVED' | 'REJECTED'; text: string } | null>(null)
+  const [successResult, setSuccessResult] = useState<GameState | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [helpSubmitting, setHelpSubmitting] = useState(false)
+  const [helpMessage, setHelpMessage] = useState('')
+  const [confirmDamagedQr, setConfirmDamagedQr] = useState(false)
+  const resultHandler = useRef(onResult)
+  resultHandler.current = onResult
+  const reviewAttemptId = state.state === 'ANSWER_INCORRECT' ? state.attemptId : undefined
 
   const [phase, setPhase] = useState<'A' | 'B'>('A')
 
@@ -315,24 +322,46 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   }, [state.challengeId, state.state, state.hasHint, state.hint])
 
   useEffect(() => {
+    if (!successResult) return
+    let finished = false
+    const finish = (next: GameState) => {
+      if (finished) return
+      finished = true
+      resultHandler.current(next)
+    }
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const transition = window.setTimeout(async () => {
+      try { finish(await getGameState()) }
+      catch { finish(successResult) }
+    }, reducedMotion ? 0 : 700)
+    const guard = window.setTimeout(() => finish(successResult), reducedMotion ? 250 : 2_500)
+    return () => { window.clearTimeout(transition); window.clearTimeout(guard) }
+  }, [successResult])
+
+  useEffect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    setReview(null)
+    setReviewNotice(null)
     const check = async () => {
       try {
         const status = await getSupportStatus()
         if (stopped) return
-        const relevant = status.reviews.find(item => item.challenge_id === state.challengeId) ?? null
+        const relevant = reviewAttemptId
+          ? status.reviews.find(item => item.answer_attempt_id === reviewAttemptId) ?? null
+          : status.reviews.find(item => item.challenge_id === state.challengeId && item.status === 'PENDING') ?? null
         setReview(relevant)
         if (relevant?.status === 'APPROVED') {
-          setReviewNotice(`¡Tu respuesta fue aprobada! Puntaje corregido: +${relevant.scoreCorrection}`)
+          setReviewNotice({ reviewId: relevant.id, status: 'APPROVED', text: `¡Tu respuesta fue aprobada! Puntaje corregido: +${relevant.scoreCorrection}` })
           const current = await getGameState()
-          if (!stopped) window.setTimeout(() => onResult(current), 1200)
+          if (!stopped) window.setTimeout(() => resultHandler.current(current), 1200)
           return
         }
         if (relevant?.status === 'REJECTED') {
-          setReviewNotice('Tu respuesta fue revisada y no fue aceptada.')
+          setReviewNotice({ reviewId: relevant.id, status: 'REJECTED', text: 'Tu respuesta fue revisada y no fue aceptada.' })
           return
         }
+        setReviewNotice(null)
         if (relevant?.status === 'PENDING') timer = setTimeout(check, 12_000)
       } catch {
         if (!stopped) timer = setTimeout(check, 12_000)
@@ -340,7 +369,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
     }
     void check()
     return () => { stopped = true; if (timer) clearTimeout(timer) }
-  }, [state.challengeId])
+  }, [state.challengeId, reviewAttemptId])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -349,9 +378,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
     try {
       const next = await submitAnswer(state.challengeId, { answer: answer.trim() })
       if (next.state === 'ADVANCED' || next.state === 'COMPLETED') {
-        setStatus('success')
-        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        setTimeout(() => onResult(next), reducedMotion ? 0 : 700)
+        setSuccessResult(next)
       } else {
         onResult(next)
         setSubmitting(false)
@@ -360,7 +387,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
     catch { setError('No se pudo enviar la respuesta. Intentá nuevamente.'); setSubmitting(false) }
   }
 
-  if (status === 'success') {
+  if (successResult) {
     return (
       <MobileShell>
         <BrandHeader rightElement={<GameplayRulesButton />} />
@@ -390,7 +417,6 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
 
   const pending = review?.status === 'PENDING'
   const oldPending = pending && Date.now() - new Date(review.created_at).getTime() >= 300_000
-  const reviewAttemptId = state.state === 'ANSWER_INCORRECT' ? state.attemptId : undefined
   return <MobileShell>
     <BrandHeader rightElement={<GameplayRulesButton />} />
     <main className="flex-1 px-6 pt-7 pb-8">
@@ -408,10 +434,11 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       <div className="mt-4 flex flex-col items-start gap-2 border-t pt-4">
         {state.hasHint && !confirmHint && <button className="text-sm font-bold text-brand underline" onClick={() => setConfirmHint(true)}>Ver pista (-5)</button>}
         {!pending && review?.answer_attempt_id !== reviewAttemptId && reviewAttemptId && <button className="text-sm text-brand underline" onClick={() => setConfirmReview(true)}>Creo que mi respuesta fue correcta</button>}
+        <button className="text-sm text-neutral-600 underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button>
       </div>
       {confirmReview && reviewAttemptId && <div className="mt-3 rounded border bg-surface-warm p-3 text-sm">
         <p className="font-bold">Tu respuesta quedará en evaluación por Tutorías.</p>
-        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { await submitAnswerReview(reviewAttemptId); setConfirmReview(false); const status = await getSupportStatus(); setReview(status.reviews.find(item => item.challenge_id === state.challengeId) ?? null) }}>Enviar a revisión</button>
+        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { await submitAnswerReview(reviewAttemptId); setConfirmReview(false); const status = await getSupportStatus(); setReview(status.reviews.find(item => item.answer_attempt_id === reviewAttemptId) ?? null) }}>Enviar a revisión</button>
         <button className="ml-2" onClick={() => setConfirmReview(false)}>Seguir intentando</button>
       </div>}
       {confirmHint && <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
@@ -420,7 +447,8 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
         <button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button>
       </div>}
       {pending && <div className="mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm"><p className="font-bold">Respuesta en evaluación</p><p>Un tutor está revisándola. Podés seguir intentando mientras Tutorías revisa tu respuesta.</p>{oldPending && <p className="mt-2 font-medium">¿Todavía no tenés respuesta?<br />Acercate a la oficina de Tutorías y te ayudamos.</p>}</div>}
-      {reviewNotice && <div className={`mt-4 rounded border p-3 text-sm ${review?.status === 'REJECTED' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>{reviewNotice}</div>}
+      {reviewNotice && review?.status !== 'PENDING' && <div className={`mt-4 rounded border p-3 text-sm ${reviewNotice.status === 'REJECTED' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}><span>{reviewNotice.text}</span><button className="ml-3 underline" onClick={() => setReviewNotice(null)}>Cerrar</button></div>}
+      {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Este desafío ya está desbloqueado. Podés continuar respondiendo.')}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting || !reviewAttemptId || pending} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmReview(true) }}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm font-bold text-brand" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </main>
   </MobileShell>

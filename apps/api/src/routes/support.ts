@@ -35,10 +35,10 @@ supportRoutes.post('/requests', zValidator('json', z.object({ category: z.enum([
   const duplicate = await c.env.DB.prepare(`SELECT id FROM support_requests
     WHERE session_id = ? AND category = ? AND status = 'PENDING'
       AND created_at >= datetime('now', '-60 seconds') LIMIT 1`).bind(session.id, input.category).first()
-  if (duplicate) return c.json({ success: true, duplicate: true, message: 'Ya enviamos este aviso a Tutorías.' })
-  await c.env.DB.prepare('INSERT INTO support_requests (session_id, participant_id, checkpoint_id, category, note) VALUES (?, (SELECT participant_id FROM sessions WHERE id = ?), ?, ?, ?)')
+  if (duplicate) return c.json({ success: true, id: Number(duplicate.id), duplicate: true, message: 'Ya enviamos este aviso a Tutorías.' })
+  const inserted = await c.env.DB.prepare('INSERT INTO support_requests (session_id, participant_id, checkpoint_id, category, note) VALUES (?, (SELECT participant_id FROM sessions WHERE id = ?), ?, ?, ?)')
     .bind(session.id, session.id, step?.checkpoint_id ?? null, input.category, input.note ?? null).run()
-  return c.json({ success: true })
+  return c.json({ success: true, id: Number(inserted.meta.last_row_id) })
 })
 
 supportRoutes.post('/answer-reviews', zValidator('json', z.object({ attemptId: z.number().int() })), async (c) => {

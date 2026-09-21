@@ -9,6 +9,8 @@ export interface Env {
   ORGANIZER_SECRET: string
   ORGANIZER_TOTP_SECRET: string
   PARTICIPANT_ID_SECRET: string
+  ASSISTANCE_USERNAME: string
+  ASSISTANCE_PASSWORD: string
   ADMIN_LOGIN_LIMITER?: RateLimit
   ENVIRONMENT?: string
 }

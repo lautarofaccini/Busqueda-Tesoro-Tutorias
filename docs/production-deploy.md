@@ -2,11 +2,13 @@
 
 This repository is prepared for one same-origin Worker serving static React assets and `/api/*`. Do not run local reset commands against a remote database.
 
+For the final event hotfix after production content is loaded, do not rerun migrations or content import. Configure any newly required secrets, then release only with `npm run build` followed by `cd apps/api` and `npx wrangler deploy --env production`.
+
 1. `cd apps/api` then `npx wrangler login` and `npx wrangler whoami`.
 2. Create the database: `npx wrangler d1 create busqueda-tesoro-tutorias-prod`.
 3. Paste its returned ID into `apps/api/wrangler.toml` under `env.production.d1_databases`.
 4. Confirm `[env.production.vars]` remains `ENVIRONMENT = "production"`.
-5. Enroll a local authenticator before deploying the security hotfix: from the repository root run `npm run admin:totp:setup`, scan `.local-totp/organizer-totp-enrollment.png` with Authy (or another RFC 6238 app), then delete `.local-totp/` after confirming it. Set all three independent secrets interactively: `npx wrangler secret put ORGANIZER_SECRET --env production`, `npx wrangler secret put ORGANIZER_TOTP_SECRET --env production`, and `npx wrangler secret put PARTICIPANT_ID_SECRET --env production`. Never add secrets to this repository or `wrangler.toml`.
+5. Enroll a local authenticator before deploying the security hotfix: from the repository root run `npm run admin:totp:setup`, scan `.local-totp/organizer-totp-enrollment.png` with Authy (or another RFC 6238 app), then delete `.local-totp/` after confirming it. Set the independent secrets interactively: `npx wrangler secret put ORGANIZER_SECRET --env production`, `npx wrangler secret put ORGANIZER_TOTP_SECRET --env production`, `npx wrangler secret put PARTICIPANT_ID_SECRET --env production`, `npx wrangler secret put ASSISTANCE_USERNAME --env production`, and `npx wrangler secret put ASSISTANCE_PASSWORD --env production`. Never add secrets to this repository or `wrangler.toml`.
 6. From repository root, run `npm run build`.
 7. Apply migrations: `cd apps/api && npx wrangler d1 migrations apply busqueda-tesoro-tutorias-prod --remote --env production`.
 8. Import content once, without reset: `cd ../.. && npm run content:import:remote`. It requires the explicit remote flag internally, preserves DRAFT, and leaves needs-review questions inactive.
@@ -21,6 +23,8 @@ This repository is prepared for one same-origin Worker serving static React asse
 ## Organizer access and LIVE safety
 
 Organizer access requires the password secret plus an RFC 6238 TOTP code (six digits, 30 seconds). The production Worker has a dedicated rate-limit binding (`ADMIN_LOGIN_LIMITER`, 10 attempts per minute per source address); its account-local `namespace_id` in `wrangler.toml` must remain unique within the Cloudflare account.
+
+The limited `/asistencia` panel uses its own `ASSISTANCE_USERNAME` and `ASSISTANCE_PASSWORD` secrets and a separate four-hour cookie. That role can only read and resolve assistance/review records; its cookie is not accepted by organizer routes.
 
 Changing the event to LIVE is refused by the API until there is an active START checkpoint, every active non-start checkpoint has a primary navigation riddle, every active checkpoint has a playable active question, and no active question remains marked `REVISAR`. The organizer screen displays the returned checklist. Leave the event in DRAFT until that list is clear.
 

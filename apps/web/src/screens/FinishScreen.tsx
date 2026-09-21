@@ -47,11 +47,6 @@ export function FinishScreen() {
 
   if (!state) return null
 
-  const completedDate = new Date(state.completedAt).toLocaleTimeString('es-AR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
   return (
     <MobileShell>
       <BrandHeader />
@@ -65,7 +60,7 @@ export function FinishScreen() {
             </span>
           </div>
           <h1 className="text-3xl font-black text-foreground tracking-tight leading-tight">
-            ¡Felicitaciones!
+            ¡Terminaste!
           </h1>
           <div className="flex items-center gap-1.5 mt-3 mb-6" aria-hidden="true">
             <div className="h-1 w-12 bg-brand rounded-full" />
@@ -73,13 +68,9 @@ export function FinishScreen() {
           </div>
 
           <div className="border-l-4 border-l-brand bg-surface border border-border rounded-r-lg p-5 shadow-xs">
-            <p className="text-base text-foreground font-semibold leading-relaxed">
-              Completaste la búsqueda del tesoro.
-            </p>
-            <p className="mt-1.5 text-sm text-muted">
-              {state.playerName} · {completedDate}
-            </p>
-            <p className="mt-3 text-lg font-black text-brand">Puntos finales: {state.score}</p>
+            <p className="text-lg font-black text-brand">Puntaje final: {state.score}</p>
+            <p className="mt-3 text-sm text-muted">Tu resultado quedó guardado.<br />Tutorías publicará a los ganadores.</p>
+            <p className="mt-3 text-sm text-muted">Si hay empate en puestos con premio, se definirá con una trivia.</p>
           </div>
         </div>
 
@@ -91,7 +82,6 @@ export function FinishScreen() {
             </div>
           </div>
           <p className="text-xs font-mono font-bold tracking-widest text-brand uppercase">Misión cumplida</p>
-          <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">Tu resultado quedó guardado. Tutorías revisará los resultados y publicará a las personas ganadoras en sus redes sociales. Los empates en puestos con premio se resolverán con una trivia de cultura general al día siguiente. Los premios estarán disponibles desde el día siguiente.</p>
         </div>
 
         {/* Footer */}

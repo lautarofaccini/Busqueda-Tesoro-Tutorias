@@ -9,6 +9,7 @@ import { DemoGame } from './screens/DemoGame'
 import { DemoWrongCheckpoint } from './screens/DemoWrongCheckpoint'
 import { OrganizerView } from './screens/OrganizerView'
 import { AdminView } from './screens/AdminView'
+import { AssistanceView } from './screens/AssistanceView'
 
 /**
  * Application router.
@@ -44,6 +45,7 @@ export function App() {
         
         {/* Admin Console */}
         <Route path="/admin" element={<AdminView />} />
+        <Route path="/asistencia" element={<AssistanceView />} />
       </Routes>
     </BrowserRouter>
   )

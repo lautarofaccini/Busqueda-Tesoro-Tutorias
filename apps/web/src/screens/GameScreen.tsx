@@ -8,6 +8,7 @@ import { EventPausedEndedView } from '../components/EventPausedEndedView'
 import { ChallengeScreen } from './CheckpointScan'
 import { ScoreDisplay } from '../components/ScoreDisplay'
 import { GameplayRulesButton } from '../components/GameplayRulesButton'
+import { QrScannerSheet } from '../components/QrScannerSheet'
 
 /**
  * GameScreen — shown at /game.
@@ -29,9 +30,11 @@ export function GameScreen() {
   const [fallbackOpen, setFallbackOpen] = useState(false)
   const [helpSubmitting, setHelpSubmitting] = useState(false)
   const [confirmDamagedQr, setConfirmDamagedQr] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
   const [reviewMessage, setReviewMessage] = useState('')
   const pendingReviewIds = useRef(new Set<number>())
   const notifiedReviewIds = useRef(new Set<number>())
+  const pendingSupportIds = useRef(new Set<number>())
 
   useEffect(() => {
     void getGameState()
@@ -69,6 +72,13 @@ export function GameScreen() {
             else if (!stopped) setGameState(current)
           }
         }
+        for (const request of status.support) {
+          if (request.status === 'PENDING') pendingSupportIds.current.add(request.id)
+          if (request.status === 'RESOLVED' && pendingSupportIds.current.has(request.id)) {
+            pendingSupportIds.current.delete(request.id)
+            setReviewMessage('Tutorías marcó tu pedido de ayuda como atendido.')
+          }
+        }
       } catch {
         // A transient polling failure must not interrupt gameplay.
       } finally {
@@ -101,7 +111,10 @@ export function GameScreen() {
   if (state.state === 'CHALLENGE' || state.state === 'ANSWER_INCORRECT') {
     return <ChallengeScreen state={state} onResult={(next) => {
       if (next.state === 'COMPLETED') void navigate('/finish', { replace: true })
-      else if (next.state === 'ADVANCED') void navigate('/game', { replace: true, state: { scoreFeedback: '+100 puntos' } })
+      else if (next.state === 'ADVANCED') {
+        setGameState(next)
+        void navigate('/game', { replace: true, state: { scoreFeedback: '+100 puntos' } })
+      }
       else setGameState(next)
     }} />
   }
@@ -156,7 +169,7 @@ export function GameScreen() {
             <div className="h-1 w-4 bg-yellow rounded-full" />
           </div>
           {(state.state === 'ADVANCED' || (location.state as { scoreFeedback?: string } | null)?.scoreFeedback) && <p className="mb-4 rounded bg-green-50 p-3 text-sm font-bold text-green-800" role="status">{(location.state as { scoreFeedback?: string } | null)?.scoreFeedback ?? '+100 puntos'}</p>}
-          {reviewMessage && <p className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900" role="status">{reviewMessage}</p>}
+          {reviewMessage && <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900" role="status">{reviewMessage}<button type="button" className="ml-3 underline" onClick={() => setReviewMessage('')}>Cerrar</button></div>}
 
           {/* Clue card */}
           {clue ? (
@@ -197,15 +210,12 @@ export function GameScreen() {
 
               <div className="mt-4 pt-3 border-t border-dashed border-border/80 flex items-center gap-2 text-xs text-muted">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true" />
-                <span>Buscá ese lugar y escaneá el QR para desbloquear el siguiente desafío.</span>
+                <span>Buscá ese lugar y escaneá el QR que encuentres allí.</span>
               </div>
-              <button type="button" onClick={() => { setHelpMessage('Abrí la cámara de tu teléfono para escanear el QR. Si no funciona, usá el código impreso.'); setHelpOpen(true) }} className="mx-auto mt-5 flex h-16 w-16 items-center justify-center rounded-full bg-brand text-sm font-black text-white shadow" aria-label="Escanear QR">QR</button>
-              <div className="mt-4">
-                <button onClick={() => { setFallbackCode(''); setHelpMessage(''); setFallbackOpen(true) }} className="w-full py-2 border border-brand text-brand hover:bg-brand hover:text-white font-bold rounded text-sm transition-colors">
-                  No puedo escanear el QR
-                </button>
-              </div>
-              <button className="mt-4 text-sm font-bold text-brand underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button>
+              <button type="button" onClick={() => setScannerOpen(true)} className="mx-auto mt-5 flex flex-col items-center text-center" aria-label="Escanear QR">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full border border-amber-300/60 bg-amber-100/70 text-xs font-mono font-black text-amber-900">QR</span>
+                <span className="mt-2 max-w-[240px] text-xs font-medium leading-relaxed text-muted">Al llegar al punto físico, escaneá el código para continuar.</span>
+              </button>
             </div>
           ) : (
             <div className="border border-border-warm bg-surface-warm rounded-xl p-5 border-l-4 border-l-amber shadow-xs">
@@ -214,7 +224,14 @@ export function GameScreen() {
               </p>
             </div>
           )}
+          {clue && <div className="mt-4 space-y-3">
+            <button onClick={() => { setFallbackCode(''); setHelpMessage(''); setFallbackOpen(true) }} className="w-full py-2 border border-brand text-brand hover:bg-brand hover:text-white font-bold rounded text-sm transition-colors">
+              No puedo escanear el QR
+            </button>
+            <button className="w-full text-sm font-bold text-brand underline" onClick={() => setHelpOpen(true)}>¿Necesitás ayuda?</button>
+          </div>}
         </div>
+        <QrScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onUseCode={() => { setScannerOpen(false); setFallbackCode(''); setHelpMessage(''); setFallbackOpen(true) }} onScanned={next => { setScannerOpen(false); if (next.state === 'COMPLETED') void navigate('/finish', { replace: true }); else setGameState(next) }} />
         {fallbackOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center bg-black/60 p-4">
             <div className="w-full max-w-sm mx-auto rounded-xl bg-white p-6 shadow-xl">
@@ -254,17 +271,7 @@ export function GameScreen() {
           </div>
         )}
 
-        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
-
-        {/* Player tag */}
-        <div className="my-auto py-5 flex flex-col items-center justify-center text-center" aria-hidden="true">
-          <div className="w-11 h-11 rounded-full bg-amber-100/70 border border-amber-300/60 flex items-center justify-center mb-2">
-            <span className="text-xs font-mono font-black text-amber-900">QR</span>
-          </div>
-          <p className="text-xs text-muted font-medium max-w-[240px] leading-relaxed">
-            Al llegar al punto físico, escaneá el código para continuar.
-          </p>
-        </div>
+        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); if (result.id) pendingSupportIds.current.add(result.id); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); if (result.id) pendingSupportIds.current.add(result.id); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
 
         {/* Footer */}
         <footer className="pt-4 border-t border-border/70 flex items-center justify-between text-xs text-muted">
