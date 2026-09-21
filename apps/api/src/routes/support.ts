@@ -22,8 +22,13 @@ supportRoutes.post('/requests', zValidator('json', z.object({ category: z.enum([
   const session = await currentSession(c)
   if (!session || session.status !== 'active') return c.json({ error: 'INVALID_SESSION' }, 401)
   const step = await getSessionStep(c.env.DB, session.id, session.current_step)
+  const input = c.req.valid('json')
+  const duplicate = await c.env.DB.prepare(`SELECT id FROM support_requests
+    WHERE session_id = ? AND category = ? AND status = 'PENDING'
+      AND created_at >= datetime('now', '-60 seconds') LIMIT 1`).bind(session.id, input.category).first()
+  if (duplicate) return c.json({ success: true, duplicate: true, message: 'Ya enviamos este aviso a Tutorías.' })
   await c.env.DB.prepare('INSERT INTO support_requests (session_id, participant_id, checkpoint_id, category, note) VALUES (?, (SELECT participant_id FROM sessions WHERE id = ?), ?, ?, ?)')
-    .bind(session.id, session.id, step?.checkpoint_id ?? null, c.req.valid('json').category, c.req.valid('json').note ?? null).run()
+    .bind(session.id, session.id, step?.checkpoint_id ?? null, input.category, input.note ?? null).run()
   return c.json({ success: true })
 })
 

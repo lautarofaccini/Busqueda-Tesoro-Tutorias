@@ -5,7 +5,7 @@ const addPage = vi.fn(() => ({ getSize: () => ({ width: 595, height: 842 }), dra
 const save = vi.fn(async () => new Uint8Array([1, 2, 3]))
 
 vi.mock('pdf-lib', () => ({
-  PDFDocument: { create: vi.fn(async () => ({ addPage, embedFont: vi.fn(async () => ({ widthOfTextAtSize: (text: string) => text.length * 10 })), embedPng: vi.fn(async () => ({})), save })) },
+  PDFDocument: { create: vi.fn(async () => ({ addPage, embedFont: vi.fn(async () => ({ widthOfTextAtSize: (text: string) => text.length * 10 })), embedPng: vi.fn(async () => ({})), embedJpg: vi.fn(async () => ({ width: 100, height: 50 })), save })) },
   StandardFonts: { Helvetica: 'Helvetica', HelveticaBold: 'HelveticaBold' },
   rgb: vi.fn(),
 }))
@@ -22,6 +22,7 @@ describe('QR poster PDFs', () => {
     addPage.mockClear()
     vi.mocked(QRCode.toDataURL).mockClear()
     vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:poster'), revokeObjectURL: vi.fn() })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))))
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
   })
 
@@ -29,6 +30,8 @@ describe('QR poster PDFs', () => {
     await generateSingleQRPdf(checkpoint)
     expect(QRCode.toDataURL).toHaveBeenCalledWith('https://tesoro.tutorias-frre.workers.dev/q/stable-token', expect.any(Object))
     expect(drawText).toHaveBeenCalledWith('Código: ABC12345', expect.any(Object))
+    expect(drawText).toHaveBeenCalledWith('ESTACIÓN', expect.any(Object))
+    expect(drawText).not.toHaveBeenCalledWith('Biblioteca', expect.any(Object))
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled()
   })
 

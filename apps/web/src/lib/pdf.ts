@@ -22,20 +22,26 @@ const generatePage = async (pdfDoc: PDFDocument, data: CheckpointQRData) => {
   })
   
   const qrImage = await pdfDoc.embedPng(qrDataUrl)
+  const logoBytes = await fetch('/tutorias-frre-logo.jpg').then(response => response.arrayBuffer())
+  const logo = await pdfDoc.embedJpg(logoBytes)
   
+  const logoWidth = 150
+  const logoHeight = logo.height * (logoWidth / logo.width)
+  page.drawImage(logo, { x: width / 2 - logoWidth / 2, y: height - 85, width: logoWidth, height: logoHeight })
+
   // Title
   page.drawText('Búsqueda del Tesoro', {
     x: width / 2 - font.widthOfTextAtSize('Búsqueda del Tesoro', 32) / 2,
-    y: height - 100,
-    size: 32,
+    y: height - 135,
+    size: 28,
     font,
     color: rgb(0.1, 0.1, 0.1),
   })
 
-  // Checkpoint Name
-  page.drawText(data.label, {
-    x: width / 2 - font.widthOfTextAtSize(data.label, 24) / 2,
-    y: height - 150,
+  // Physical cards intentionally hide their checkpoint identity.
+  page.drawText('ESTACIÓN', {
+    x: width / 2 - font.widthOfTextAtSize('ESTACIÓN', 24) / 2,
+    y: height - 180,
     size: 24,
     font,
     color: rgb(0.8, 0.3, 0),
@@ -45,7 +51,7 @@ const generatePage = async (pdfDoc: PDFDocument, data: CheckpointQRData) => {
   const qrSize = 300
   page.drawImage(qrImage, {
     x: width / 2 - qrSize / 2,
-    y: height - 180 - qrSize,
+    y: height - 210 - qrSize,
     width: qrSize,
     height: qrSize,
   })
@@ -53,7 +59,7 @@ const generatePage = async (pdfDoc: PDFDocument, data: CheckpointQRData) => {
   // Escaneá acá
   page.drawText('Escaneá acá', {
     x: width / 2 - font.widthOfTextAtSize('Escaneá acá', 28) / 2,
-    y: height - 180 - qrSize - 50,
+    y: height - 210 - qrSize - 50,
     size: 28,
     font,
     color: rgb(0, 0, 0),
@@ -62,7 +68,7 @@ const generatePage = async (pdfDoc: PDFDocument, data: CheckpointQRData) => {
   // ¿No podés escanear?
   page.drawText('¿No podés escanear?', {
     x: width / 2 - fontNormal.widthOfTextAtSize('¿No podés escanear?', 18) / 2,
-    y: height - 180 - qrSize - 120,
+    y: height - 210 - qrSize - 120,
     size: 18,
     font: fontNormal,
     color: rgb(0.3, 0.3, 0.3),
@@ -72,7 +78,7 @@ const generatePage = async (pdfDoc: PDFDocument, data: CheckpointQRData) => {
   const codeText = `Código: ${data.fallback_code}`
   page.drawText(codeText, {
     x: width / 2 - font.widthOfTextAtSize(codeText, 24) / 2,
-    y: height - 180 - qrSize - 160,
+    y: height - 210 - qrSize - 160,
     size: 24,
     font,
     color: rgb(0.1, 0.1, 0.1),

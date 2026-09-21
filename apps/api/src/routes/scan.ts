@@ -65,6 +65,13 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
     return c.json({ state: 'NEEDS_START' })
   }
 
+  // Check lifecycle before onboarding: a start QR must not open registration
+  // when the event is draft, paused, or already finished.
+  const settings = await getEventSettings(c.env.DB)
+  if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
+  if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
+  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status ?? 'DRAFT' }, 403)
+
   // 2. No session
   if (!sessionToken) {
     if (checkpoint.is_start === 1) {
@@ -123,11 +130,6 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
       completedAt: session.completed_at ?? new Date().toISOString(),
     })
   }
-
-  const settings = await getEventSettings(c.env.DB)
-  if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
-  if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
-  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
 
   // Refresh cookie
   c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))

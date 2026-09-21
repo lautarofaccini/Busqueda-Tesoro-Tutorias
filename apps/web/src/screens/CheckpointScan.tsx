@@ -79,7 +79,7 @@ export function CheckpointScan() {
     return (
       <MobileShell>
         <BrandHeader />
-        <main className="flex-1 flex flex-col justify-between px-6 pt-7 pb-8">
+        <main className="flex-1 flex flex-col justify-center px-6 pt-7 pb-8">
           <div className="border-l-4 border-l-amber bg-surface-warm border border-border rounded-r-lg p-5 shadow-xs mt-6">
             <p className="text-base text-foreground font-semibold">{error ?? 'Error desconocido.'}</p>
           </div>
@@ -163,20 +163,20 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
   const [playerName, setPlayerName] = useState('')
   const [lastName, setLastName] = useState('')
   const [career, setCareer] = useState<'' | SessionStartRequest['career']>('')
-  const [identifierType, setIdentifierType] = useState<'LEGAJO' | 'DNI'>('LEGAJO')
+  const [identifierType] = useState<'DNI'>('DNI')
   const [identifierValue, setIdentifierValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const expectedLength = identifierType === 'LEGAJO' ? 5 : 8
+    const expectedLength = 8
     if (!playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()) {
       setErr('Completá todos los datos para comenzar.')
       return
     }
     if (!new RegExp(`^\\d{${expectedLength}}$`).test(identifierValue)) {
-      setErr(identifierType === 'LEGAJO' ? 'El legajo debe tener exactamente 5 dígitos numéricos.' : 'El DNI debe tener exactamente 8 dígitos numéricos.')
+      setErr('El DNI debe tener exactamente 8 dígitos numéricos.')
       return
     }
     setSubmitting(true)
@@ -217,15 +217,14 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
             </h1>
             <div className="space-y-3 text-sm text-foreground">
               <p><strong>Cómo jugar:</strong> seguí cada acertijo, encontrá el punto físico, escaneá su QR y respondé el desafío asignado.</p>
-              <p><strong>Puntaje:</strong> correcta +100 · incorrecta -10 · pista voluntaria -5.</p>
-              <p><strong>Respuesta incorrecta:</strong> esperá 10 segundos para volver a intentar.</p>
+              <p><strong>Puntaje:</strong> correcta +100 · pista voluntaria -5.</p>
               <p><strong>Pista:</strong> aparece después del primer error y solo descuenta puntos si elegís verla.</p>
-              <p><strong>Tiempo:</strong> no cambia el puntaje; se guarda solo como registro.</p>
-              <p>Una participación por estudiante. Cuidemos la actividad normal de la facultad.</p>
+              <p>El tiempo no influye en tu puntaje.</p>
+              <p>Jugá una sola vez y recorré la facu sin interrumpir clases ni actividades. La idea es divertirnos y que todos puedan jugar.</p>
             </div>
           </div>
           <Button onClick={() => setStep('form')} className="mt-8 h-14 w-full">
-            Entendido, Continuar
+            Entendido
           </Button>
         </main>
       </MobileShell>
@@ -241,7 +240,6 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
             Tus datos
           </h1>
           <p className="text-sm mt-2 text-muted">Completá este formulario para empezar la búsqueda.</p>
-          <p className="text-xs mt-2 text-muted">Correcta +100 · Incorrecta -10 · Pista voluntaria -5.</p>
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="mt-5 flex flex-col gap-4" noValidate>
@@ -270,13 +268,9 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-foreground mb-1">Identificación</label>
-            <div className="flex gap-2 mb-2">
-              <button type="button" onClick={() => setIdentifierType('LEGAJO')} className={`flex-1 py-2 rounded text-sm font-bold ${identifierType === 'LEGAJO' ? 'bg-neutral-800 text-white' : 'bg-surface border'}`}>LEGAJO</button>
-              <button type="button" onClick={() => setIdentifierType('DNI')} className={`flex-1 py-2 rounded text-sm font-bold ${identifierType === 'DNI' ? 'bg-neutral-800 text-white' : 'bg-surface border'}`}>DNI</button>
-            </div>
-            <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={identifierType === 'LEGAJO' ? 5 : 8} value={identifierValue} onChange={(e) => setIdentifierValue(e.target.value.replace(/\D/g, '').slice(0, identifierType === 'LEGAJO' ? 5 : 8))} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" placeholder={identifierType === 'LEGAJO' ? 'Legajo: 5 dígitos' : 'DNI: 8 dígitos'} />
-            <p className="mt-1 text-xs text-muted">{identifierType === 'LEGAJO' ? 'Ingresá los 5 dígitos de tu legajo.' : 'Ingresá los 8 dígitos de tu DNI.'}</p>
+            <label className="block text-xs font-bold text-foreground mb-1">DNI</label>
+            <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={8} value={identifierValue} onChange={(e) => setIdentifierValue(e.target.value.replace(/\D/g, '').slice(0, 8))} disabled={submitting} className="w-full h-12 bg-surface border border-border rounded-lg px-3 text-base focus:border-brand focus:ring-1 focus:ring-brand" placeholder="DNI: 8 dígitos" />
+            <p className="mt-1 text-xs text-muted">Ingresá los 8 dígitos de tu DNI.</p>
           </div>
 
           <Button type="submit" disabled={submitting || !playerName.trim() || !lastName.trim() || !career.trim() || !identifierValue.trim()} className="mt-4 h-14 w-full">
