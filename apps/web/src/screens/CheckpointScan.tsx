@@ -304,7 +304,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
     if (state.state === 'ANSWER_INCORRECT' || state.hasHint || state.hint || prefersReducedMotion) {
       setPhase('B')
     } else {
-      const timer = setTimeout(() => setPhase('B'), 1300)
+      const timer = setTimeout(() => setPhase('B'), 5000)
       return () => clearTimeout(timer)
     }
   }, [state.challengeId, state.state, state.hasHint, state.hint])
@@ -349,6 +349,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
         <main className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
           <div className="mb-4 inline-flex px-3 py-1 bg-amber-100 text-amber-900 text-sm font-black rounded uppercase tracking-widest">DESAFÍO</div>
           <h1 className="text-3xl font-black text-foreground leading-tight">{state.question}</h1>
+          <p className="mt-6 text-sm text-muted">Tocá para responder</p>
         </main>
       </MobileShell>
     )

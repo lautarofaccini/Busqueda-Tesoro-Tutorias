@@ -460,6 +460,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
   const [data, setData] = useState({
     question_text: challenge.question_text,
     accepted_answers: challenge.accepted_answers.join(', '),
+    hint_text: challenge.hint_text ?? '',
     active: challenge.active,
     needs_review: challenge.needs_review ?? 0,
     review_note: challenge.review_note ?? ''
@@ -473,6 +474,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
         ...challenge,
         question_text: data.question_text,
         accepted_answers: data.accepted_answers.split(',').map((s:string) => s.trim()).filter(Boolean),
+        hint_text: data.hint_text || null,
         active: data.active ? 1 : 0,
         needs_review: data.needs_review ? 1 : 0,
         review_note: data.review_note || null
@@ -498,6 +500,8 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
         <input className="border p-2 w-full rounded" value={data.question_text} onChange={e => setData({...data, question_text: e.target.value})} />
         <label className="font-bold text-xs text-neutral-600 uppercase mt-2">Respuestas Aceptadas (separadas por coma)</label>
         <input className="border p-2 w-full rounded" value={data.accepted_answers} onChange={e => setData({...data, accepted_answers: e.target.value})} />
+        <label className="font-bold text-xs text-neutral-600 uppercase mt-2">Pista (opcional)</label>
+        <input className="border p-2 w-full rounded" value={data.hint_text} onChange={e => setData({...data, hint_text: e.target.value})} />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!data.needs_review} onChange={e => setData({...data, needs_review: e.target.checked ? 1 : 0})} /> Requiere revisión</label>
         {data.needs_review && <input className="border p-2 w-full rounded" value={data.review_note} onChange={e => setData({...data, review_note: e.target.value})} placeholder="Nota de revisión" />}
         <div className="flex gap-2 mt-2">
@@ -507,6 +511,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
             setData({
               question_text: challenge.question_text,
               accepted_answers: challenge.accepted_answers.join(', '),
+              hint_text: challenge.hint_text ?? '',
               active: challenge.active, needs_review: challenge.needs_review ?? 0, review_note: challenge.review_note ?? ''
             })
           }} className="px-4 py-2 text-sm border rounded bg-white hover:bg-neutral-100 font-bold text-neutral-600">Cancelar</button>
