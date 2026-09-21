@@ -9,6 +9,15 @@ import { processCheckpointScan } from './scan.js'
 
 export const supportRoutes = new Hono<{ Bindings: Env }>()
 
+export function calculateReviewScoreCorrection(
+  review: { status: string; awarded_correct?: number | null; reversed_wrong?: number | null },
+  settings?: { points_per_correct?: number | null; wrong_answer_penalty?: number | null } | null,
+) {
+  if (review.status !== 'APPROVED') return 0
+  return Number(review.awarded_correct || 0) * Number(settings?.points_per_correct ?? 100)
+    + Number(review.reversed_wrong || 0) * Number(settings?.wrong_answer_penalty ?? 10)
+}
+
 async function currentSession(c: any) {
   const token = getSessionToken(c.req.header('cookie') ?? null)
   return token ? getAnySession(c.env.DB, token) : null
@@ -47,7 +56,11 @@ supportRoutes.post('/answer-reviews', zValidator('json', z.object({ attemptId: z
 supportRoutes.get('/status', async (c) => {
   const session = await currentSession(c)
   if (!session) return c.json({ requests: [] })
-  const reviews = await c.env.DB.prepare('SELECT id, status, created_at FROM answer_review_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all()
+  const reviews = await c.env.DB.prepare('SELECT id, challenge_id, answer_attempt_id, status, score_at_request, awarded_correct, reversed_wrong, created_at, resolved_at FROM answer_review_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all<any>()
   const support = await c.env.DB.prepare('SELECT id, category, status, created_at FROM support_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all()
-  return c.json({ reviews: reviews.results, support: support.results })
+  const settings = await c.env.DB.prepare('SELECT points_per_correct, wrong_answer_penalty FROM event_settings WHERE id=1').first<any>()
+  return c.json({ reviews: reviews.results.map((review: any) => ({
+    ...review,
+    scoreCorrection: calculateReviewScoreCorrection(review, settings),
+  })), support: support.results })
 })

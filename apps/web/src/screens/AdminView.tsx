@@ -503,7 +503,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
         <label className="font-bold text-xs text-neutral-600 uppercase mt-2">Pista (opcional)</label>
         <input className="border p-2 w-full rounded" value={data.hint_text} onChange={e => setData({...data, hint_text: e.target.value})} />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!data.needs_review} onChange={e => setData({...data, needs_review: e.target.checked ? 1 : 0})} /> Requiere revisión</label>
-        {data.needs_review && <input className="border p-2 w-full rounded" value={data.review_note} onChange={e => setData({...data, review_note: e.target.value})} placeholder="Nota de revisión" />}
+        {!!data.needs_review && <input className="border p-2 w-full rounded" value={data.review_note} onChange={e => setData({...data, review_note: e.target.value})} placeholder="Nota de revisión" />}
         <div className="flex gap-2 mt-2">
           <button onClick={save} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Guardar</button>
           <button onClick={() => {
@@ -548,7 +548,7 @@ function ChallengeRow({ challenge, reload }: { challenge: any, reload: () => voi
 
 function AddChallengeModal({ checkpointId, reload }: { checkpointId: number, reload: () => void }) {
   const [open, setOpen] = useState(false)
-  const [data, setData] = useState({ q: '', a: '' })
+  const [data, setData] = useState({ q: '', a: '', hint: '' })
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -559,14 +559,14 @@ function AddChallengeModal({ checkpointId, reload }: { checkpointId: number, rel
         checkpoint_id: checkpointId,
         question_text: data.q,
         accepted_answers: data.a.split(',').map(s => s.trim()).filter(Boolean),
-        hint_text: null,
+        hint_text: data.hint.trim() || null,
         active: 1,
         needs_review: 0,
         review_note: null
       })
     })
     setOpen(false)
-    setData({ q: '', a: '' })
+    setData({ q: '', a: '', hint: '' })
     reload()
   }
 
@@ -586,6 +586,11 @@ function AddChallengeModal({ checkpointId, reload }: { checkpointId: number, rel
           <label className="block text-sm font-bold text-neutral-600 mb-1 uppercase">Respuestas Correctas</label>
           <input required className="border p-2 w-full rounded focus:ring-2 focus:ring-orange-500 outline-none" placeholder="separadas, por, coma" value={data.a} onChange={e => setData({...data, a: e.target.value})} />
           <p className="text-xs text-neutral-500 mt-1">El jugador puede escribir cualquiera de estas para avanzar.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-bold text-neutral-600 mb-1 uppercase">Pista (opcional)</label>
+          <input className="border p-2 w-full rounded focus:ring-2 focus:ring-orange-500 outline-none" value={data.hint} onChange={e => setData({...data, hint: e.target.value})} />
         </div>
 
         <div className="flex justify-end gap-3 mt-4 pt-4 border-t">

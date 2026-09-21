@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { GameState } from '@busqueda-tesoro/shared'
-import { getGameState, revealSecondaryHint, submitFallbackCode, submitSupport } from '../api/client'
+import { getGameState, getSupportStatus, revealSecondaryHint, submitFallbackCode, submitSupport } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
 import { ChallengeScreen } from './CheckpointScan'
 import { ScoreDisplay } from '../components/ScoreDisplay'
+import { GameplayRulesButton } from '../components/GameplayRulesButton'
 
 /**
  * GameScreen — shown at /game.
@@ -26,6 +27,11 @@ export function GameScreen() {
   const [fallbackCode, setFallbackCode] = useState('')
   const [helpMessage, setHelpMessage] = useState('')
   const [fallbackOpen, setFallbackOpen] = useState(false)
+  const [helpSubmitting, setHelpSubmitting] = useState(false)
+  const [confirmDamagedQr, setConfirmDamagedQr] = useState(false)
+  const [reviewMessage, setReviewMessage] = useState('')
+  const pendingReviewIds = useRef(new Set<number>())
+  const notifiedReviewIds = useRef(new Set<number>())
 
   useEffect(() => {
     void getGameState()
@@ -42,6 +48,35 @@ export function GameScreen() {
       .catch(() => {
         void navigate('/', { replace: true })
       })
+  }, [navigate])
+
+  useEffect(() => {
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const pollReviews = async () => {
+      try {
+        const status = await getSupportStatus()
+        if (stopped) return
+        for (const review of status.reviews) {
+          if (review.status === 'PENDING') pendingReviewIds.current.add(review.id)
+          if (review.status !== 'PENDING' && pendingReviewIds.current.has(review.id) && !notifiedReviewIds.current.has(review.id)) {
+            notifiedReviewIds.current.add(review.id)
+            setReviewMessage(review.status === 'APPROVED'
+              ? `¡Tu respuesta fue aprobada! Puntaje corregido: +${review.scoreCorrection}`
+              : 'Tu respuesta fue revisada y no fue aceptada.')
+            const current = await getGameState()
+            if (!stopped && current.state === 'COMPLETED') void navigate('/finish', { replace: true })
+            else if (!stopped) setGameState(current)
+          }
+        }
+      } catch {
+        // A transient polling failure must not interrupt gameplay.
+      } finally {
+        if (!stopped) timer = setTimeout(pollReviews, 12_000)
+      }
+    }
+    void pollReviews()
+    return () => { stopped = true; if (timer) clearTimeout(timer) }
   }, [navigate])
 
   if (loading) {
@@ -96,7 +131,7 @@ export function GameScreen() {
 
   return (
     <MobileShell>
-      <BrandHeader />
+      <BrandHeader rightElement={<GameplayRulesButton />} />
       <main className="flex-1 flex flex-col justify-between px-6 pt-6 pb-8">
         {/* Status */}
         <div>
@@ -121,6 +156,7 @@ export function GameScreen() {
             <div className="h-1 w-4 bg-yellow rounded-full" />
           </div>
           {(state.state === 'ADVANCED' || (location.state as { scoreFeedback?: string } | null)?.scoreFeedback) && <p className="mb-4 rounded bg-green-50 p-3 text-sm font-bold text-green-800" role="status">{(location.state as { scoreFeedback?: string } | null)?.scoreFeedback ?? '+100 puntos'}</p>}
+          {reviewMessage && <p className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900" role="status">{reviewMessage}</p>}
 
           {/* Clue card */}
           {clue ? (
@@ -163,6 +199,7 @@ export function GameScreen() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber" aria-hidden="true" />
                 <span>Buscá ese lugar y escaneá el QR para desbloquear el siguiente desafío.</span>
               </div>
+              <button type="button" onClick={() => { setHelpMessage('Abrí la cámara de tu teléfono para escanear el QR. Si no funciona, usá el código impreso.'); setHelpOpen(true) }} className="mx-auto mt-5 flex h-16 w-16 items-center justify-center rounded-full bg-brand text-sm font-black text-white shadow" aria-label="Escanear QR">QR</button>
               <div className="mt-4">
                 <button onClick={() => { setFallbackCode(''); setHelpMessage(''); setFallbackOpen(true) }} className="w-full py-2 border border-brand text-brand hover:bg-brand hover:text-white font-bold rounded text-sm transition-colors">
                   No puedo escanear el QR
@@ -217,7 +254,7 @@ export function GameScreen() {
           </div>
         )}
 
-        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button className="rounded border p-3 text-left" onClick={() => { setHelpMessage('Si tu respuesta fue rechazada, podés pedir revisión desde la pantalla del desafío.') }}>Mi respuesta debería ser correcta</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_SCAN'); setHelpMessage('Avisamos al equipo de asistencia.') }}>No puedo escanear el QR</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('QR_DAMAGED'); setHelpMessage('Avisamos al equipo de asistencia.') }}>El QR está dañado o no funciona</button><button className="rounded border p-3 text-left" onClick={async () => { await submitSupport('OTHER'); setHelpMessage('Avisamos al equipo de asistencia.') }}>Otro problema</button></div>{helpMessage && <p className="mt-3 text-sm text-brand font-bold">{helpMessage}</p>}<button className="mt-4 w-full rounded border p-2 font-bold" onClick={() => setHelpOpen(false)}>Cerrar</button></div></div>}
+        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
 
         {/* Player tag */}
         <div className="my-auto py-5 flex flex-col items-center justify-center text-center" aria-hidden="true">

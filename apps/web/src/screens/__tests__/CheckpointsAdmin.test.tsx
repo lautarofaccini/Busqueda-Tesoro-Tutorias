@@ -17,6 +17,15 @@ function mockFetch() {
   }) as typeof fetch
 }
 
+function mockFetchWithChallenge() {
+  global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url === '/api/admin/checkpoints') return new Response(JSON.stringify(checkpoints), { status: 200 })
+    if (url === '/api/admin/challenges') return new Response(JSON.stringify([{ id: 70, checkpoint_id: 11, question_text: 'Pregunta existente', accepted_answers: ['respuesta'], hint_text: 'Pista existente', active: 1, needs_review: 0, review_note: null }]), { status: 200 })
+    return new Response(JSON.stringify({ success: true }), { status: 200 })
+  }) as typeof fetch
+}
+
 async function setup() {
   const user = userEvent.setup()
   render(<CheckpointsAdmin />)
@@ -78,5 +87,19 @@ describe('CheckpointsAdmin accordion and QR actions', () => {
     expect(screen.getAllByText('Regenerar QR')).toHaveLength(2)
     await user.click(screen.getAllByText('Regenerar QR')[0]!)
     expect(global.fetch).not.toHaveBeenCalledWith('/api/admin/checkpoints/11/token', expect.anything())
+  })
+
+  it('renders and preserves the existing question hint without showing a raw zero', async () => {
+    mockFetchWithChallenge()
+    const user = userEvent.setup()
+    render(<CheckpointsAdmin />)
+    await user.click(await screen.findByText('Checkpoint A'))
+    await user.click(screen.getByRole('button', { name: 'Editar' }))
+    expect(screen.getByDisplayValue('Pista existente')).toBeInTheDocument()
+    expect(screen.queryByText(/^0$/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    const request = vi.mocked(global.fetch).mock.calls.find(([url, options]) => String(url) === '/api/admin/challenges/70' && options?.method === 'PUT')
+    expect(request).toBeDefined()
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ hint_text: 'Pista existente', needs_review: 0 })
   })
 })

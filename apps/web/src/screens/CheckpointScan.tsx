@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { GameState, SessionStartRequest } from '@busqueda-tesoro/shared'
-import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview } from '../api/client'
+import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview, getSupportStatus, getGameState } from '../api/client'
+import type { PlayerReviewStatus } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
 import { Button } from '../components/Button'
 import { ScoreDisplay } from '../components/ScoreDisplay'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
+import { GameplayRulesButton } from '../components/GameplayRulesButton'
 
 /**
  * CheckpointScan — production screen for /q/:token.
@@ -221,6 +223,7 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
               <p><strong>Pista:</strong> aparece después del primer error y solo descuenta puntos si elegís verla.</p>
               <p>El tiempo no influye en tu puntaje.</p>
               <p>Jugá una sola vez y recorré la facu sin interrumpir clases ni actividades. La idea es divertirnos y que todos puedan jugar.</p>
+              <p>Todas las estaciones están dentro de las instalaciones de la facultad.</p>
             </div>
           </div>
           <Button onClick={() => setStep('form')} className="mt-8 h-14 w-full">
@@ -293,6 +296,8 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   const [error, setError] = useState('')
   const [confirmHint, setConfirmHint] = useState(false)
   const [confirmReview, setConfirmReview] = useState(false)
+  const [review, setReview] = useState<PlayerReviewStatus | null>(null)
+  const [reviewNotice, setReviewNotice] = useState('')
   const [status, setStatus] = useState<'idle' | 'success'>('idle')
 
   const [phase, setPhase] = useState<'A' | 'B'>('A')
@@ -308,6 +313,34 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       return () => clearTimeout(timer)
     }
   }, [state.challengeId, state.state, state.hasHint, state.hint])
+
+  useEffect(() => {
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const check = async () => {
+      try {
+        const status = await getSupportStatus()
+        if (stopped) return
+        const relevant = status.reviews.find(item => item.challenge_id === state.challengeId) ?? null
+        setReview(relevant)
+        if (relevant?.status === 'APPROVED') {
+          setReviewNotice(`¡Tu respuesta fue aprobada! Puntaje corregido: +${relevant.scoreCorrection}`)
+          const current = await getGameState()
+          if (!stopped) window.setTimeout(() => onResult(current), 1200)
+          return
+        }
+        if (relevant?.status === 'REJECTED') {
+          setReviewNotice('Tu respuesta fue revisada y no fue aceptada.')
+          return
+        }
+        if (relevant?.status === 'PENDING') timer = setTimeout(check, 12_000)
+      } catch {
+        if (!stopped) timer = setTimeout(check, 12_000)
+      }
+    }
+    void check()
+    return () => { stopped = true; if (timer) clearTimeout(timer) }
+  }, [state.challengeId])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -330,7 +363,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   if (status === 'success') {
     return (
       <MobileShell>
-        <BrandHeader />
+        <BrandHeader rightElement={<GameplayRulesButton />} />
         <main onClick={() => setPhase('B')} className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
           <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
@@ -345,8 +378,8 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   if (phase === 'A') {
     return (
       <MobileShell>
-        <BrandHeader />
-        <main className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
+        <BrandHeader rightElement={<GameplayRulesButton />} />
+        <main onClick={() => setPhase('B')} className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
           <div className="mb-4 inline-flex px-3 py-1 bg-amber-100 text-amber-900 text-sm font-black rounded uppercase tracking-widest">DESAFÍO</div>
           <h1 className="text-3xl font-black text-foreground leading-tight">{state.question}</h1>
           <p className="mt-6 text-sm text-muted">Tocá para responder</p>
@@ -355,10 +388,40 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
     )
   }
 
-  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-7 pb-8"><div className="flex justify-between"><p className="text-xs font-bold text-brand uppercase">{state.stepNumber === 0 ? 'Desafío inicial' : `Desafío ${state.stepNumber} de ${state.totalSteps}`}</p><p className="text-xs font-bold"><ScoreDisplay score={state.score} /></p></div><p className="mt-1 text-xs text-muted">Correcta +100 · Incorrecta -10 · Pista -5</p>
-
-  <div className="mt-6 p-6 bg-white border border-border shadow-sm rounded-xl animate-scale-in motion-reduce:animate-none">
-    <div className="mb-4 inline-flex px-2 py-1 bg-amber-100 text-amber-900 text-xs font-black rounded uppercase tracking-widest">DESAFÍO</div>
-    <h1 className="text-xl font-bold leading-snug">{state.question}</h1>
-  </div>{state.state === 'ANSWER_INCORRECT' && <><p className="mt-4 text-red-600">La respuesta no es correcta. Probá otra vez.</p>{state.attemptId && <button className="mt-3 text-sm text-brand underline" onClick={() => setConfirmReview(true)}>Creo que mi respuesta fue correcta</button>}{confirmReview && <div className="mt-3 rounded border bg-surface-warm p-3 text-sm"><p className="font-bold">Tu respuesta quedará en evaluación por Tutorías.</p><p className="mt-1">Podés enviarla para revisión o seguir intentando con la penalidad actual.</p><button className="mt-3 rounded bg-brand px-3 py-2 font-bold text-white" onClick={async () => { try { await submitAnswerReview(state.attemptId); setConfirmReview(false); setError('Respuesta en evaluación. Un tutor está revisando tu respuesta.') } catch { setError('No se pudo solicitar la revisión.') } }}>Enviar a revisión</button><button className="ml-2" onClick={() => setConfirmReview(false)}>Seguir intentando</button></div>}</>}{state.hint && <p className="mt-4 rounded bg-blue-50 p-3 text-sm">Pista: {state.hint}</p>}{state.hasHint && !confirmHint && <button className="mt-4 rounded border px-3 py-2 text-sm font-bold" onClick={() => setConfirmHint(true)}>Ver pista (-5 puntos)</button>}{confirmHint && <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>Revelar esta pista descuenta 5 puntos. ¿Continuar?</p><button className="mt-2 rounded bg-amber-700 px-3 py-2 text-white" onClick={async () => { try { const next = await revealQuestionHint(); setConfirmHint(false); onResult(next) } catch { setError('No se pudo revelar la pista.') } }}>Revelar pista (-5)</button><button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button></div>}{error && <p className="mt-4 text-red-600">{error}</p>}<form className="mt-6 flex flex-col gap-3 animate-scale-in motion-reduce:animate-none" onSubmit={submit}><input className="border rounded p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" autoFocus /><Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button></form></main></MobileShell>
+  const pending = review?.status === 'PENDING'
+  const oldPending = pending && Date.now() - new Date(review.created_at).getTime() >= 300_000
+  const reviewAttemptId = state.state === 'ANSWER_INCORRECT' ? state.attemptId : undefined
+  return <MobileShell>
+    <BrandHeader rightElement={<GameplayRulesButton />} />
+    <main className="flex-1 px-6 pt-7 pb-8">
+      <div className="flex justify-between">
+        <p className="text-xs font-bold text-brand uppercase">{state.stepNumber === 0 ? 'Desafío inicial' : `Desafío ${state.stepNumber} de ${state.totalSteps}`}</p>
+        <ScoreDisplay score={state.score} />
+      </div>
+      <div className="mt-6 rounded-xl border bg-white p-5"><span className="text-xs font-black text-brand">DESAFÍO</span><h1 className="mt-2 text-xl font-bold">{state.question}</h1></div>
+      {state.state === 'ANSWER_INCORRECT' && <p className="mt-3 text-sm text-red-600">Respuesta incorrecta · -10</p>}
+      {state.hint && <p className="mt-3 rounded bg-blue-50 p-3 text-sm">Pista: {state.hint}</p>}
+      <form className="mt-5 flex flex-col gap-3" onSubmit={submit}>
+        <input className="rounded border p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" autoFocus />
+        <Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button>
+      </form>
+      <div className="mt-4 flex flex-col items-start gap-2 border-t pt-4">
+        {state.hasHint && !confirmHint && <button className="text-sm font-bold text-brand underline" onClick={() => setConfirmHint(true)}>Ver pista (-5)</button>}
+        {!pending && review?.answer_attempt_id !== reviewAttemptId && reviewAttemptId && <button className="text-sm text-brand underline" onClick={() => setConfirmReview(true)}>Creo que mi respuesta fue correcta</button>}
+      </div>
+      {confirmReview && reviewAttemptId && <div className="mt-3 rounded border bg-surface-warm p-3 text-sm">
+        <p className="font-bold">Tu respuesta quedará en evaluación por Tutorías.</p>
+        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { await submitAnswerReview(reviewAttemptId); setConfirmReview(false); const status = await getSupportStatus(); setReview(status.reviews.find(item => item.challenge_id === state.challengeId) ?? null) }}>Enviar a revisión</button>
+        <button className="ml-2" onClick={() => setConfirmReview(false)}>Seguir intentando</button>
+      </div>}
+      {confirmHint && <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+        <p>Revelar esta pista descuenta 5 puntos.</p>
+        <button className="mt-2 rounded bg-amber-700 px-3 py-2 text-white" onClick={async () => { const next = await revealQuestionHint(); setConfirmHint(false); onResult(next) }}>Revelar pista</button>
+        <button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button>
+      </div>}
+      {pending && <div className="mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm"><p className="font-bold">Respuesta en evaluación</p><p>Un tutor está revisándola. Podés seguir intentando mientras Tutorías revisa tu respuesta.</p>{oldPending && <p className="mt-2 font-medium">¿Todavía no tenés respuesta?<br />Acercate a la oficina de Tutorías y te ayudamos.</p>}</div>}
+      {reviewNotice && <div className={`mt-4 rounded border p-3 text-sm ${review?.status === 'REJECTED' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>{reviewNotice}</div>}
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+    </main>
+  </MobileShell>
 }
