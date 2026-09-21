@@ -9,6 +9,10 @@ import { ChallengeScreen } from './CheckpointScan'
 import { ScoreDisplay } from '../components/ScoreDisplay'
 import { GameplayRulesButton } from '../components/GameplayRulesButton'
 import { QrScannerSheet } from '../components/QrScannerSheet'
+import { Button } from '../components/Button'
+import { acknowledgeReview, isReviewAcknowledged } from '../lib/reviewAcknowledgement'
+
+type ReviewNotice = { reviewId: number; text: string }
 
 /**
  * GameScreen — shown at /game.
@@ -31,9 +35,12 @@ export function GameScreen() {
   const [helpSubmitting, setHelpSubmitting] = useState(false)
   const [confirmDamagedQr, setConfirmDamagedQr] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [reviewMessage, setReviewMessage] = useState('')
+  const [reviewNotice, setReviewNotice] = useState<ReviewNotice | null>(null)
+  const [recoveringState, setRecoveringState] = useState(false)
+  const [stateLoadError, setStateLoadError] = useState(false)
+  const [supportPollNonce, setSupportPollNonce] = useState(0)
   const pendingReviewIds = useRef(new Set<number>())
-  const notifiedReviewIds = useRef(new Set<number>())
+  const reconciledReviewIds = useRef(new Set<number>())
   const pendingSupportIds = useRef(new Set<number>())
 
   useEffect(() => {
@@ -57,16 +64,26 @@ export function GameScreen() {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const pollReviews = async () => {
+      let nextDelay: number | undefined
       try {
         const status = await getSupportStatus()
         if (stopped) return
         for (const review of status.reviews) {
           if (review.status === 'PENDING') pendingReviewIds.current.add(review.id)
-          if (review.status !== 'PENDING' && pendingReviewIds.current.has(review.id) && !notifiedReviewIds.current.has(review.id)) {
-            notifiedReviewIds.current.add(review.id)
-            setReviewMessage(review.status === 'APPROVED'
-              ? `¡Tu respuesta fue aprobada! Puntaje corregido: +${review.scoreCorrection}`
-              : 'Tu respuesta fue revisada y no fue aceptada.')
+          else pendingReviewIds.current.delete(review.id)
+        }
+
+        const latestReview = status.reviews[0]
+        const latestTerminal = latestReview?.status !== 'PENDING' ? latestReview : undefined
+        if (latestTerminal && !isReviewAcknowledged(latestTerminal.id)) {
+          setReviewNotice({
+            reviewId: latestTerminal.id,
+            text: latestTerminal.status === 'APPROVED'
+              ? `¡Tu respuesta fue aprobada! Puntaje corregido: +${latestTerminal.scoreCorrection}`
+              : 'Tu respuesta fue revisada y no fue aceptada.',
+          })
+          if (!reconciledReviewIds.current.has(latestTerminal.id)) {
+            reconciledReviewIds.current.add(latestTerminal.id)
             const current = await getGameState()
             if (!stopped && current.state === 'COMPLETED') void navigate('/finish', { replace: true })
             else if (!stopped) setGameState(current)
@@ -76,18 +93,36 @@ export function GameScreen() {
           if (request.status === 'PENDING') pendingSupportIds.current.add(request.id)
           if (request.status === 'RESOLVED' && pendingSupportIds.current.has(request.id)) {
             pendingSupportIds.current.delete(request.id)
-            setReviewMessage('Tutorías marcó tu pedido de ayuda como atendido.')
+            setReviewNotice({ reviewId: -request.id, text: 'Tutorías marcó tu pedido de ayuda como atendido.' })
           }
         }
+        if (status.reviews.some(review => review.status === 'PENDING')) nextDelay = 3_000
+        else if (status.support.some(request => request.status === 'PENDING')) nextDelay = 12_000
       } catch {
         // A transient polling failure must not interrupt gameplay.
+        if (pendingReviewIds.current.size > 0) nextDelay = 3_000
+        else if (pendingSupportIds.current.size > 0) nextDelay = 12_000
       } finally {
-        if (!stopped) timer = setTimeout(pollReviews, 12_000)
+        if (!stopped && nextDelay) timer = setTimeout(pollReviews, nextDelay)
       }
     }
     void pollReviews()
     return () => { stopped = true; if (timer) clearTimeout(timer) }
-  }, [navigate])
+  }, [navigate, gameState?.state, supportPollNonce])
+
+  const retryGameState = async () => {
+    setRecoveringState(true)
+    setStateLoadError(false)
+    try {
+      const current = await getGameState()
+      if (current.state === 'COMPLETED') void navigate('/finish', { replace: true })
+      else setGameState(current)
+    } catch {
+      setStateLoadError(true)
+    } finally {
+      setRecoveringState(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -102,7 +137,9 @@ export function GameScreen() {
   }
 
   const state = gameState
-  if (!state) return null
+  if (!state) {
+    return <RecoverGameState onRetry={() => void retryGameState()} retrying={recoveringState} />
+  }
 
   if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
     return <EventPausedEndedView state={state.state} />
@@ -120,7 +157,7 @@ export function GameScreen() {
   }
 
   if (state.state !== 'ACTIVE' && state.state !== 'ADVANCED') {
-    return null
+    return <RecoverGameState onRetry={() => void retryGameState()} retrying={recoveringState} showError={stateLoadError} />
   }
 
 
@@ -169,7 +206,7 @@ export function GameScreen() {
             <div className="h-1 w-4 bg-yellow rounded-full" />
           </div>
           {(state.state === 'ADVANCED' || (location.state as { scoreFeedback?: string } | null)?.scoreFeedback) && <p className="mb-4 rounded bg-green-50 p-3 text-sm font-bold text-green-800" role="status">{(location.state as { scoreFeedback?: string } | null)?.scoreFeedback ?? '+100 puntos'}</p>}
-          {reviewMessage && <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900" role="status">{reviewMessage}<button type="button" className="ml-3 underline" onClick={() => setReviewMessage('')}>Cerrar</button></div>}
+          {reviewNotice && <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900" role="status">{reviewNotice.text}<button type="button" className="ml-3 underline" onClick={() => { if (reviewNotice.reviewId > 0) acknowledgeReview(reviewNotice.reviewId); setReviewNotice(null) }}>Cerrar</button></div>}
 
           {/* Clue card */}
           {clue ? (
@@ -271,7 +308,7 @@ export function GameScreen() {
           </div>
         )}
 
-        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); if (result.id) pendingSupportIds.current.add(result.id); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); if (result.id) pendingSupportIds.current.add(result.id); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
+        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); if (result.id) pendingSupportIds.current.add(result.id); setSupportPollNonce(value => value + 1); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); if (result.id) pendingSupportIds.current.add(result.id); setSupportPollNonce(value => value + 1); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
 
         {/* Footer */}
         <footer className="pt-4 border-t border-border/70 flex items-center justify-between text-xs text-muted">
@@ -281,4 +318,8 @@ export function GameScreen() {
       </main>
     </MobileShell>
   )
+}
+
+function RecoverGameState({ onRetry, retrying, showError = true }: { onRetry: () => void; retrying: boolean; showError?: boolean }) {
+  return <MobileShell><BrandHeader /><main className="flex flex-1 flex-col items-center justify-center px-6 text-center"><h1 className="text-xl font-black">No pudimos cargar el siguiente paso.</h1>{showError && <p className="mt-2 text-sm text-muted">Tu avance está guardado. Podés volver a intentarlo sin recargar la página.</p>}<Button type="button" className="mt-5" disabled={retrying} onClick={onRetry}>{retrying ? 'Reintentando…' : 'Reintentar'}</Button></main></MobileShell>
 }

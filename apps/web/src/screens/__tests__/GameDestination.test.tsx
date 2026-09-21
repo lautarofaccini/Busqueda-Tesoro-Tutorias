@@ -23,6 +23,7 @@ const active = { state: 'ACTIVE' as const, clue: 'Pista vigente', stepNumber: 1,
 describe('next destination actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
     vi.mocked(client.getGameState).mockResolvedValue(active)
     vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [], support: [] })
@@ -47,7 +48,7 @@ describe('next destination actions', () => {
     await user.click(await screen.findByRole('button', { name: 'Escanear QR' }))
     expect(screen.getByRole('dialog', { name: 'Escanear QR' })).toBeInTheDocument()
     expect(await screen.findByText(/escáner integrado no está disponible/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Ingresar código impreso' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Escanear QR' })).getByRole('button', { name: 'No puedo escanear el QR' }))
     expect(screen.getByText('¿No podés escanear el QR?')).toBeInTheDocument()
   })
 
@@ -85,5 +86,34 @@ describe('next destination actions', () => {
     expect(screen.getByText('¡Correcto!')).toBeInTheDocument()
     expect(await screen.findByText('Destino siguiente', {}, { timeout: 1_500 })).toBeInTheDocument()
     expect(screen.queryByText('¡Correcto!')).not.toBeInTheDocument()
+  })
+
+  it('recovers a rejected review notification after refresh until it is acknowledged', async () => {
+    const rejected = { id: 31, challenge_id: 7, answer_attempt_id: 42, status: 'REJECTED' as const, created_at: new Date().toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 0 }
+    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [rejected], support: [] })
+    const user = userEvent.setup()
+    const first = render(<MemoryRouter><GameScreen /></MemoryRouter>)
+    expect(await screen.findByText('Tu respuesta fue revisada y no fue aceptada.')).toBeInTheDocument()
+    first.unmount()
+    render(<MemoryRouter><GameScreen /></MemoryRouter>)
+    expect(await screen.findByText('Tu respuesta fue revisada y no fue aceptada.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByText('Tu respuesta fue revisada y no fue aceptada.')).not.toBeInTheDocument()
+  })
+
+  it('recovers an approved review with its authoritative correction after refresh', async () => {
+    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [{ id: 32, challenge_id: 7, answer_attempt_id: 42, status: 'APPROVED', created_at: new Date().toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 110 }], support: [] })
+    render(<MemoryRouter><GameScreen /></MemoryRouter>)
+    expect(await screen.findByText('¡Tu respuesta fue aprobada! Puntaje corregido: +110')).toBeInTheDocument()
+  })
+
+  it('does not leak an older terminal result into a later pending review', async () => {
+    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [
+      { id: 34, challenge_id: 8, answer_attempt_id: 44, status: 'PENDING', created_at: new Date().toISOString(), scoreCorrection: 0 },
+      { id: 33, challenge_id: 7, answer_attempt_id: 42, status: 'REJECTED', created_at: new Date(Date.now() - 60_000).toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 0 },
+    ], support: [] })
+    render(<MemoryRouter><GameScreen /></MemoryRouter>)
+    await screen.findByText('Pista vigente')
+    expect(screen.queryByText('Tu respuesta fue revisada y no fue aceptada.')).not.toBeInTheDocument()
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { GameState, SessionStartRequest } from '@busqueda-tesoro/shared'
-import { scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview, submitSupport, getSupportStatus, getGameState } from '../api/client'
+import { ApiError, scanToken, startSession, submitAnswer, revealQuestionHint, submitAnswerReview, submitSupport, getSupportStatus, getGameState } from '../api/client'
 import type { PlayerReviewStatus } from '../api/client'
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
@@ -10,6 +10,7 @@ import { Button } from '../components/Button'
 import { ScoreDisplay } from '../components/ScoreDisplay'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
 import { GameplayRulesButton } from '../components/GameplayRulesButton'
+import { acknowledgeReview, isReviewAcknowledged } from '../lib/reviewAcknowledgement'
 
 /**
  * CheckpointScan — production screen for /q/:token.
@@ -70,14 +71,8 @@ export function CheckpointScan() {
   }
 
   const state = gameState
-  if (!state) return null
-
-  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
-    return <EventPausedEndedView state={state.state} />
-  }
-
   // ── Error ───────────────────────────────────────────────────────────────
-  if (error || !gameState) {
+  if (error || !state) {
     return (
       <MobileShell>
         <BrandHeader />
@@ -88,6 +83,10 @@ export function CheckpointScan() {
         </main>
       </MobileShell>
     )
+  }
+
+  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
+    return <EventPausedEndedView state={state.state} />
   }
 
   // ── Route to sub-screens based on state ────────────────────────────────
@@ -107,7 +106,7 @@ export function CheckpointScan() {
         onResult={(next) => {
           if (next.state === 'COMPLETED') {
             void navigate('/finish', { replace: true })
-          } else if (next.state === 'ADVANCED') {
+          } else if (next.state === 'ADVANCED' || next.state === 'ACTIVE') {
             void navigate('/game', { replace: true, state: { scoreFeedback: '+100 puntos' } })
           } else {
             setGameState(next)
@@ -117,7 +116,7 @@ export function CheckpointScan() {
     )
   }
 
-  return null
+  return <MobileShell><BrandHeader /><main className="flex flex-1 flex-col items-center justify-center px-6 text-center"><h1 className="text-xl font-black">No pudimos cargar el siguiente paso.</h1><p className="mt-2 text-sm text-muted">Tu avance está guardado.</p><Button className="mt-5" onClick={() => void navigate('/game', { replace: true })}>Reintentar</Button></main></MobileShell>
 }
 
 // ── Sub-screens ─────────────────────────────────────────────────────────
@@ -299,6 +298,10 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   const [review, setReview] = useState<PlayerReviewStatus | null>(null)
   const [reviewNotice, setReviewNotice] = useState<{ reviewId: number; status: 'APPROVED' | 'REJECTED'; text: string } | null>(null)
   const [successResult, setSuccessResult] = useState<GameState | null>(null)
+  const [successPhase, setSuccessPhase] = useState<'feedback' | 'reconciling' | 'retrying' | 'error'>('feedback')
+  const [successRetryNonce, setSuccessRetryNonce] = useState(0)
+  const [cooldownSeconds, setCooldownSeconds] = useState(state.cooldownRemaining ?? 0)
+  const [reviewPollNonce, setReviewPollNonce] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
   const [helpSubmitting, setHelpSubmitting] = useState(false)
   const [helpMessage, setHelpMessage] = useState('')
@@ -310,12 +313,37 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   const [phase, setPhase] = useState<'A' | 'B'>('A')
 
   useEffect(() => {
+    setSuccessResult(null)
+    setSuccessPhase('feedback')
+    setSuccessRetryNonce(0)
+    setAnswer('')
+    setError('')
+    setSubmitting(false)
+  }, [state.challengeId])
+
+  useEffect(() => {
+    setReview(null)
+    setReviewNotice(null)
+  }, [state.challengeId, reviewAttemptId])
+
+  useEffect(() => {
+    setCooldownSeconds(state.cooldownRemaining ?? 0)
+  }, [state.challengeId, state.cooldownRemaining])
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return
+    const timer = window.setTimeout(() => setCooldownSeconds(seconds => Math.max(0, seconds - 1)), 1_000)
+    return () => window.clearTimeout(timer)
+  }, [cooldownSeconds])
+
+  useEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     // If we've already answered incorrectly, or have hints, skip phase A
     if (state.state === 'ANSWER_INCORRECT' || state.hasHint || state.hint || prefersReducedMotion) {
       setPhase('B')
     } else {
+      setPhase('A')
       const timer = setTimeout(() => setPhase('B'), 5000)
       return () => clearTimeout(timer)
     }
@@ -323,26 +351,45 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
 
   useEffect(() => {
     if (!successResult) return
-    let finished = false
-    const finish = (next: GameState) => {
-      if (finished) return
-      finished = true
-      resultHandler.current(next)
-    }
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const transition = window.setTimeout(async () => {
-      try { finish(await getGameState()) }
-      catch { finish(successResult) }
-    }, reducedMotion ? 0 : 700)
-    const guard = window.setTimeout(() => finish(successResult), reducedMotion ? 250 : 2_500)
-    return () => { window.clearTimeout(transition); window.clearTimeout(guard) }
-  }, [successResult])
+    const fetchWithTimeout = async () => {
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      try {
+        return await Promise.race([
+          getGameState(),
+          new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('STATE_TIMEOUT')), 3_500) }),
+        ])
+      } finally {
+        if (timeout) clearTimeout(timeout)
+      }
+    }
+    const reconcile = async (attempt: number) => {
+      if (stopped) return
+      setSuccessPhase(attempt === 0 ? 'reconciling' : 'retrying')
+      try {
+        const current = await fetchWithTimeout()
+        if (!stopped) resultHandler.current(current)
+      } catch {
+        if (stopped) return
+        if (attempt === 0) {
+          setSuccessPhase('retrying')
+          timer = setTimeout(() => void reconcile(1), 800)
+        } else {
+          setSuccessPhase('error')
+        }
+      }
+    }
+    setSuccessPhase('feedback')
+    timer = setTimeout(() => void reconcile(0), successRetryNonce > 0 || reducedMotion ? 0 : 700)
+    return () => { stopped = true; if (timer) clearTimeout(timer) }
+  }, [successResult, successRetryNonce])
 
   useEffect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | undefined
-    setReview(null)
-    setReviewNotice(null)
+    let pendingObserved = false
     const check = async () => {
       try {
         const status = await getSupportStatus()
@@ -352,39 +399,57 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
           : status.reviews.find(item => item.challenge_id === state.challengeId && item.status === 'PENDING') ?? null
         setReview(relevant)
         if (relevant?.status === 'APPROVED') {
-          setReviewNotice({ reviewId: relevant.id, status: 'APPROVED', text: `¡Tu respuesta fue aprobada! Puntaje corregido: +${relevant.scoreCorrection}` })
+          pendingObserved = false
+          setReviewNotice(isReviewAcknowledged(relevant.id) ? null : { reviewId: relevant.id, status: 'APPROVED', text: `¡Tu respuesta fue aprobada! Puntaje corregido: +${relevant.scoreCorrection}` })
           const current = await getGameState()
-          if (!stopped) window.setTimeout(() => resultHandler.current(current), 1200)
+          if (!stopped) resultHandler.current(current)
           return
         }
         if (relevant?.status === 'REJECTED') {
-          setReviewNotice({ reviewId: relevant.id, status: 'REJECTED', text: 'Tu respuesta fue revisada y no fue aceptada.' })
+          pendingObserved = false
+          setReviewNotice(isReviewAcknowledged(relevant.id) ? null : { reviewId: relevant.id, status: 'REJECTED', text: 'Tu respuesta fue revisada y no fue aceptada.' })
           return
         }
         setReviewNotice(null)
-        if (relevant?.status === 'PENDING') timer = setTimeout(check, 12_000)
+        pendingObserved = relevant?.status === 'PENDING'
+        if (pendingObserved) timer = setTimeout(check, 3_000)
       } catch {
-        if (!stopped) timer = setTimeout(check, 12_000)
+        if (!stopped && pendingObserved) timer = setTimeout(check, 3_000)
       }
     }
     void check()
     return () => { stopped = true; if (timer) clearTimeout(timer) }
-  }, [state.challengeId, reviewAttemptId])
+  }, [state.challengeId, reviewAttemptId, reviewPollNonce])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!answer.trim()) return
+    if (!answer.trim() || cooldownSeconds > 0) return
     setSubmitting(true); setError('')
     try {
       const next = await submitAnswer(state.challengeId, { answer: answer.trim() })
       if (next.state === 'ADVANCED' || next.state === 'COMPLETED') {
         setSuccessResult(next)
       } else {
+        if (next.state === 'ANSWER_INCORRECT') setCooldownSeconds(next.cooldownRemaining ?? 10)
         onResult(next)
         setSubmitting(false)
       }
     }
-    catch { setError('No se pudo enviar la respuesta. Intentá nuevamente.'); setSubmitting(false) }
+    catch (cause) {
+      if (cause instanceof ApiError && cause.status === 429 && cause.body.error === 'COOLDOWN_ACTIVE') {
+        const remaining = Number(cause.body.remainingSeconds)
+        setCooldownSeconds(Number.isFinite(remaining) && remaining > 0 ? Math.ceil(remaining) : 1)
+        setError('')
+      } else if (cause instanceof ApiError && [403, 404, 409].includes(cause.status)) {
+        setError('El estado del desafío cambió. Estamos recuperando tu avance.')
+        try { resultHandler.current(await getGameState()) } catch { setError('No pudimos recuperar el desafío. Intentá nuevamente.') }
+      } else if (cause instanceof ApiError && cause.status >= 500) {
+        setError('El servidor no pudo procesar la respuesta. Intentá nuevamente.')
+      } else {
+        setError('No pudimos conectarnos. Revisá tu conexión e intentá nuevamente.')
+      }
+      setSubmitting(false)
+    }
   }
 
   if (successResult) {
@@ -397,6 +462,8 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
           </div>
           <h1 className="text-2xl font-black text-foreground">¡Correcto!</h1>
           <p className="mt-2 text-green-700 font-bold">+100 puntos</p>
+          {successPhase === 'retrying' && <p className="mt-4 text-sm text-muted" role="status">Volviendo a intentar cargar el siguiente paso…</p>}
+          {successPhase === 'error' && <div className="mt-5 rounded border border-amber-300 bg-amber-50 p-4"><p className="font-bold text-amber-950">No pudimos cargar el siguiente paso.</p><p className="mt-1 text-sm text-amber-900">Tu respuesta ya quedó guardada.</p><Button type="button" className="mt-3" onClick={() => setSuccessRetryNonce(value => value + 1)}>Reintentar</Button></div>}
         </main>
       </MobileShell>
     )
@@ -410,6 +477,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
           <div className="mb-4 inline-flex px-3 py-1 bg-amber-100 text-amber-900 text-sm font-black rounded uppercase tracking-widest">DESAFÍO</div>
           <h1 className="text-3xl font-black text-foreground leading-tight">{state.question}</h1>
           <p className="mt-6 text-sm text-muted">Tocá para responder</p>
+          <div className="mt-4 h-1 w-full max-w-xs overflow-hidden rounded-full bg-amber-100" aria-label="Tiempo restante para responder"><div className="challenge-intro-progress h-full rounded-full bg-brand" /></div>
         </main>
       </MobileShell>
     )
@@ -429,8 +497,9 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       {state.hint && <p className="mt-3 rounded bg-blue-50 p-3 text-sm">Pista: {state.hint}</p>}
       <form className="mt-5 flex flex-col gap-3" onSubmit={submit}>
         <input className="rounded border p-3" value={answer} onChange={e => setAnswer(e.target.value)} disabled={submitting} placeholder="Tu respuesta" autoFocus />
-        <Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Responder'}</Button>
+        <Button type="submit" disabled={submitting || cooldownSeconds > 0}>{submitting ? 'Enviando...' : 'Responder'}</Button>
       </form>
+      {cooldownSeconds > 0 && <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-950" role="status">Podés volver a intentar en {cooldownSeconds} s.</p>}
       <div className="mt-4 flex flex-col items-start gap-2 border-t pt-4">
         {state.hasHint && !confirmHint && <button className="text-sm font-bold text-brand underline" onClick={() => setConfirmHint(true)}>Ver pista (-5)</button>}
         {!pending && review?.answer_attempt_id !== reviewAttemptId && reviewAttemptId && <button className="text-sm text-brand underline" onClick={() => setConfirmReview(true)}>Creo que mi respuesta fue correcta</button>}
@@ -438,7 +507,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       </div>
       {confirmReview && reviewAttemptId && <div className="mt-3 rounded border bg-surface-warm p-3 text-sm">
         <p className="font-bold">Tu respuesta quedará en evaluación por Tutorías.</p>
-        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { await submitAnswerReview(reviewAttemptId); setConfirmReview(false); const status = await getSupportStatus(); setReview(status.reviews.find(item => item.answer_attempt_id === reviewAttemptId) ?? null) }}>Enviar a revisión</button>
+        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { await submitAnswerReview(reviewAttemptId); setConfirmReview(false); const status = await getSupportStatus(); setReview(status.reviews.find(item => item.answer_attempt_id === reviewAttemptId) ?? null); setReviewPollNonce(value => value + 1) }}>Enviar a revisión</button>
         <button className="ml-2" onClick={() => setConfirmReview(false)}>Seguir intentando</button>
       </div>}
       {confirmHint && <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
@@ -447,7 +516,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
         <button className="ml-2" onClick={() => setConfirmHint(false)}>Cancelar</button>
       </div>}
       {pending && <div className="mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm"><p className="font-bold">Respuesta en evaluación</p><p>Un tutor está revisándola. Podés seguir intentando mientras Tutorías revisa tu respuesta.</p>{oldPending && <p className="mt-2 font-medium">¿Todavía no tenés respuesta?<br />Acercate a la oficina de Tutorías y te ayudamos.</p>}</div>}
-      {reviewNotice && review?.status !== 'PENDING' && <div className={`mt-4 rounded border p-3 text-sm ${reviewNotice.status === 'REJECTED' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}><span>{reviewNotice.text}</span><button className="ml-3 underline" onClick={() => setReviewNotice(null)}>Cerrar</button></div>}
+      {reviewNotice && review?.status !== 'PENDING' && <div className={`mt-4 rounded border p-3 text-sm ${reviewNotice.status === 'REJECTED' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}><span>{reviewNotice.text}</span><button className="ml-3 underline" onClick={() => { acknowledgeReview(reviewNotice.reviewId); setReviewNotice(null) }}>Cerrar</button></div>}
       {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Este desafío ya está desbloqueado. Podés continuar respondiendo.')}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting || !reviewAttemptId || pending} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmReview(true) }}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm font-bold text-brand" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </main>

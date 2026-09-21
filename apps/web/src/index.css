@@ -48,6 +48,21 @@
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes challenge-intro-progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.challenge-intro-progress {
+  animation: challenge-intro-progress 5s linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .challenge-intro-progress {
+    animation: none;
+  }
+}
+
 
 html,
 body {

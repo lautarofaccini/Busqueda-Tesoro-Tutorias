@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GameState } from '@busqueda-tesoro/shared'
@@ -6,6 +6,9 @@ import { ChallengeScreen } from '../CheckpointScan'
 import * as client from '../../api/client'
 
 vi.mock('../../api/client', () => ({
+  ApiError: class ApiError extends Error {
+    constructor(public status: number, public body: Record<string, unknown>) { super(`API error ${status}`) }
+  },
   submitAnswer: vi.fn(),
   revealQuestionHint: vi.fn(),
   submitAnswerReview: vi.fn(),
@@ -31,6 +34,7 @@ describe('Challenge review UX', () => {
   afterEach(() => vi.useRealTimers())
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
     vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [], support: [] })
   })
@@ -89,9 +93,12 @@ describe('Challenge review UX', () => {
     render(<ChallengeScreen state={wrongState} onResult={vi.fn()} />)
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
     expect(screen.getByText('Respuesta en evaluación')).toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(12_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
     expect(screen.queryByText('Respuesta en evaluación')).not.toBeInTheDocument()
     expect(screen.getByText('Tu respuesta fue revisada y no fue aceptada.')).toBeInTheDocument()
+    const terminalCallCount = vi.mocked(client.getSupportStatus).mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_000) })
+    expect(client.getSupportStatus).toHaveBeenCalledTimes(terminalCallCount)
   })
 
   it('replaces pending with approval and its authoritative correction', async () => {
@@ -104,7 +111,7 @@ describe('Challenge review UX', () => {
     render(<ChallengeScreen state={wrongState} onResult={vi.fn()} />)
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
     expect(screen.getByText('Respuesta en evaluación')).toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(12_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
     expect(screen.queryByText('Respuesta en evaluación')).not.toBeInTheDocument()
     expect(screen.getByText('¡Tu respuesta fue aprobada! Puntaje corregido: +10')).toBeInTheDocument()
   })
@@ -136,9 +143,57 @@ describe('Challenge review UX', () => {
     const user = userEvent.setup()
     render(<ChallengeScreen state={{ state: 'CHALLENGE', challengeId: 7, question: '¿Pregunta de prueba?', stepNumber: 1, totalSteps: 5, playerName: 'Ada', score: 0, hasHint: false }} onResult={vi.fn()} />)
     expect(screen.getByText('Tocá para responder')).toBeInTheDocument()
+    expect(screen.getByLabelText('Tiempo restante para responder').firstElementChild).toHaveClass('challenge-intro-progress')
     expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument()
     await user.click(screen.getByText('¿Pregunta de prueba?'))
     expect(screen.getByRole('button', { name: 'Responder' })).toBeInTheDocument()
+  })
+
+  it('automatically completes the five-second intro', async () => {
+    vi.useFakeTimers()
+    render(<ChallengeScreen state={{ state: 'CHALLENGE', challengeId: 7, question: '¿Pregunta de prueba?', stepNumber: 1, totalSteps: 5, playerName: 'Ada', score: 0, hasHint: false }} onResult={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_999) })
+    expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.getByRole('button', { name: 'Responder' })).toBeInTheDocument()
+  })
+
+  it('skips the intro immediately for reduced motion', () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addListener: vi.fn(), removeListener: vi.fn() })))
+    render(<ChallengeScreen state={{ state: 'CHALLENGE', challengeId: 7, question: '¿Pregunta de prueba?', stepNumber: 1, totalSteps: 5, playerName: 'Ada', score: 0, hasHint: false }} onResult={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Responder' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Tiempo restante para responder')).not.toBeInTheDocument()
+  })
+
+  it('shows and counts down the authoritative wrong-answer cooldown', async () => {
+    vi.useFakeTimers()
+    render(<ChallengeScreen state={{ ...wrongState, cooldownRemaining: 2 }} onResult={vi.fn()} />)
+    expect(screen.getByText('Podés volver a intentar en 2 s.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Responder' })).toBeDisabled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(screen.queryByText(/Podés volver a intentar/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Responder' })).toBeEnabled()
+  })
+
+  it('maps a server cooldown response to the countdown instead of a network error', async () => {
+    const user = userEvent.setup()
+    vi.mocked(client.submitAnswer).mockRejectedValue(new client.ApiError(429, { error: 'COOLDOWN_ACTIVE', remainingSeconds: 7 }))
+    render(<ChallengeScreen state={wrongState} onResult={vi.fn()} />)
+    await user.type(screen.getByPlaceholderText('Tu respuesta'), 'otra')
+    await user.click(screen.getByRole('button', { name: 'Responder' }))
+    expect(await screen.findByText('Podés volver a intentar en 7 s.')).toBeInTheDocument()
+    expect(screen.queryByText(/No pudimos conectarnos/)).not.toBeInTheDocument()
+  })
+
+  it('keeps a genuine network failure distinct from cooldown', async () => {
+    const user = userEvent.setup()
+    vi.mocked(client.submitAnswer).mockRejectedValue(new TypeError('network'))
+    render(<ChallengeScreen state={wrongState} onResult={vi.fn()} />)
+    await user.type(screen.getByPlaceholderText('Tu respuesta'), 'otra')
+    await user.click(screen.getByRole('button', { name: 'Responder' }))
+    expect(await screen.findByText('No pudimos conectarnos. Revisá tu conexión e intentá nuevamente.')).toBeInTheDocument()
   })
 
   it('opens rules without replacing the challenge', async () => {
@@ -197,5 +252,52 @@ describe('Challenge review UX', () => {
     await user.type(screen.getByPlaceholderText('Tu respuesta'), 'correcta')
     await user.click(screen.getByRole('button', { name: 'Responder' }))
     await waitFor(() => expect(onResult).toHaveBeenCalledWith(completed))
+  })
+
+  it('shows a recoverable state and retries reconciliation without reloading', async () => {
+    vi.useFakeTimers()
+    const accepted = { state: 'ADVANCED' as const, clue: 'Respuesta inicial', stepNumber: 2, totalSteps: 5, playerName: 'Ada', score: 100 }
+    vi.mocked(client.submitAnswer).mockResolvedValue(accepted)
+    vi.mocked(client.getGameState).mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ...accepted, state: 'ACTIVE' })
+    const onResult = vi.fn()
+    render(<ChallengeScreen state={wrongState} onResult={onResult} />)
+    fireEvent.change(screen.getByPlaceholderText('Tu respuesta'), { target: { value: 'correcta' } })
+    // Use the form directly so fake timers do not interfere with user-event scheduling.
+    await act(async () => { screen.getByRole('button', { name: 'Responder' }).click(); await Promise.resolve() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); await Promise.resolve() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); await Promise.resolve() })
+    expect(screen.getByText('No pudimos cargar el siguiente paso.')).toBeInTheDocument()
+    await act(async () => { screen.getByRole('button', { name: 'Reintentar' }).click(); await vi.runAllTimersAsync() })
+    expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ state: 'ACTIVE' }))
+  })
+
+  it('reconciles three sequential checkpoints and final completion without relying on a remount', async () => {
+    vi.useFakeTimers()
+    const onResult = vi.fn()
+    const activeStates = [1, 2, 3].map(index => ({ state: 'ACTIVE' as const, clue: `Destino ${index}`, stepNumber: index + 1, totalSteps: 4, playerName: 'Ada', score: index * 100 }))
+    const completed = { state: 'COMPLETED' as const, playerName: 'Ada', completedAt: new Date().toISOString(), score: 400 }
+    vi.mocked(client.submitAnswer)
+      .mockResolvedValueOnce({ ...activeStates[0]!, state: 'ADVANCED' })
+      .mockResolvedValueOnce({ ...activeStates[1]!, state: 'ADVANCED' })
+      .mockResolvedValueOnce({ ...activeStates[2]!, state: 'ADVANCED' })
+      .mockResolvedValueOnce(completed)
+    vi.mocked(client.getGameState)
+      .mockResolvedValueOnce(activeStates[0]!)
+      .mockResolvedValueOnce(activeStates[1]!)
+      .mockResolvedValueOnce(activeStates[2]!)
+      .mockResolvedValueOnce(completed)
+
+    const view = render(<ChallengeScreen state={{ ...wrongState, challengeId: 1, attemptId: 101 }} onResult={onResult} />)
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.change(screen.getByPlaceholderText('Tu respuesta'), { target: { value: `correcta ${index}` } })
+      await act(async () => { screen.getByRole('button', { name: 'Responder' }).click(); await Promise.resolve() })
+      await act(async () => { await vi.advanceTimersByTimeAsync(700); await Promise.resolve() })
+      expect(onResult).toHaveBeenCalledTimes(index + 1)
+      if (index < 3) {
+        view.rerender(<ChallengeScreen state={{ ...wrongState, challengeId: index + 2, attemptId: 102 + index }} onResult={onResult} />)
+        await act(async () => { await Promise.resolve() })
+      }
+    }
+    expect(onResult).toHaveBeenLastCalledWith(completed)
   })
 })

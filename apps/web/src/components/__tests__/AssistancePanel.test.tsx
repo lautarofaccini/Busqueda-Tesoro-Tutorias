@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AssistancePanel } from '../AssistancePanel'
@@ -37,5 +37,17 @@ describe('AssistancePanel', () => {
     expect(global.fetch).toHaveBeenCalledWith('/api/assistance/reviews/7/resolve', expect.objectContaining({ method: 'POST' }))
     await user.click(screen.getByRole('button', { name: 'Actualizar' }))
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/assistance/feed'))
+  })
+
+  it('polls the visible assistance feed every five seconds without overlapping', async () => {
+    vi.useFakeTimers()
+    render(<AssistancePanel basePath="/api/assistance" />)
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_999) })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 })

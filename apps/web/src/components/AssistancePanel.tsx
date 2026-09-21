@@ -57,9 +57,15 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
   }, [basePath])
 
   useEffect(() => {
+    let stopped = false
+    let timer: number | undefined
+    const poll = async () => {
+      if (document.visibilityState !== 'hidden') await load()
+      if (!stopped) timer = window.setTimeout(() => void poll(), 5_000)
+    }
     void load()
-    const timer = window.setInterval(() => void load(), 12_000)
-    return () => { window.clearInterval(timer); document.title = 'Búsqueda del Tesoro' }
+    timer = window.setTimeout(() => void poll(), 5_000)
+    return () => { stopped = true; if (timer) window.clearTimeout(timer); document.title = 'Búsqueda del Tesoro' }
   }, [load])
 
   const resolve = async (item: FeedItem, body: Record<string, unknown>) => {
