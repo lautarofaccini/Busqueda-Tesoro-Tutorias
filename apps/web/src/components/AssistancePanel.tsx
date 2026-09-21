@@ -20,14 +20,105 @@ type FeedItem = {
 
 type Feed = { pendingCount: number; items: FeedItem[] }
 
+const SOUND_PREFERENCE_KEY = 'tutorias:assistance-sound-enabled'
+const HIGHLIGHT_DURATION_MS = 8_000
+
+function itemKey(item: FeedItem) {
+  return `${item.kind}-${item.id}`
+}
+
+function itemElementId(item: FeedItem) {
+  return `assistance-${item.kind.toLowerCase()}-${item.id}`
+}
+
+function notificationCopy(item: FeedItem) {
+  const checkpoint = (item.label ?? 'Estación').toUpperCase()
+  if (item.kind === 'ANSWER_REVIEW') return { title: 'Respuesta para revisar', body: `${item.display_name} · ${checkpoint}` }
+  if (item.category === 'QR_DAMAGED') return { title: 'QR roto o extraviado', body: checkpoint }
+  if (item.category === 'QR_SCAN') return { title: 'Problema para escanear', body: `${item.display_name} · ${checkpoint}` }
+  return { title: 'Nueva solicitud de ayuda', body: `${item.display_name} · ${checkpoint}` }
+}
+
+type AudioContextConstructor = new () => AudioContext
+
 export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/api/admin/assistance' | '/api/assistance'; allowAlias?: boolean }) {
   const [feed, setFeed] = useState<Feed | null>(null)
   const [message, setMessage] = useState('')
   const [newCount, setNewCount] = useState(0)
+  const [newItemKeys, setNewItemKeys] = useState<Set<string>>(new Set())
   const [busyKey, setBusyKey] = useState('')
+  const [soundReady, setSoundReady] = useState(false)
+  const [soundUnavailable, setSoundUnavailable] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const loading = useRef(false)
-  const knownActionableIds = useRef(new Set<string>())
+  const seenActionableIds = useRef(new Set<string>())
   const initialized = useRef(false)
+  const audioContext = useRef<AudioContext | null>(null)
+  const soundReadyRef = useRef(false)
+  const notificationPermissionRef = useRef<NotificationPermission | 'unsupported'>(notificationPermission)
+  const highlightTimer = useRef<number | undefined>(undefined)
+
+  const activateSound = useCallback(async () => {
+    const WindowWithWebkitAudio = window as typeof window & { webkitAudioContext?: AudioContextConstructor }
+    const AudioContextClass = window.AudioContext ?? WindowWithWebkitAudio.webkitAudioContext
+    if (!AudioContextClass) {
+      setSoundUnavailable(true)
+      return
+    }
+    try {
+      const context = audioContext.current ?? new AudioContextClass()
+      audioContext.current = context
+      if (context.state === 'suspended') await context.resume()
+      soundReadyRef.current = true
+      setSoundReady(true)
+      setSoundUnavailable(false)
+      try { window.sessionStorage.setItem(SOUND_PREFERENCE_KEY, 'true') } catch { /* Preference persistence is optional. */ }
+    } catch {
+      setSoundUnavailable(true)
+    }
+  }, [])
+
+  const playAlertSound = useCallback(() => {
+    const context = audioContext.current
+    if (!soundReadyRef.current || !context) return
+    const emit = () => {
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(720, context.currentTime)
+      gain.gain.setValueAtTime(0.0001, context.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.015)
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.16)
+      oscillator.connect(gain)
+      gain.connect(context.destination)
+      oscillator.start(context.currentTime)
+      oscillator.stop(context.currentTime + 0.17)
+    }
+    try {
+      if (context.state === 'running') emit()
+      else void context.resume().then(emit).catch(() => undefined)
+    } catch { /* Audio is supplementary; the in-app alert remains available. */ }
+  }, [])
+
+  const notifyNewItems = useCallback((fresh: FeedItem[]) => {
+    if (!fresh.length) return
+    playAlertSound()
+    if (notificationPermissionRef.current !== 'granted' || typeof Notification === 'undefined') return
+    const primary = fresh[0]!
+    const copy = fresh.length === 1
+      ? notificationCopy(primary)
+      : { title: 'Nuevas solicitudes de asistencia', body: `${fresh.length} solicitudes pendientes` }
+    try {
+      const notification = new Notification(copy.title, { body: copy.body, tag: `assistance-${itemKey(primary)}` })
+      notification.onclick = () => {
+        window.focus()
+        document.getElementById(itemElementId(primary))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        notification.close()
+      }
+    } catch {
+      // Permission and support can change while the page is open.
+    }
+  }, [playAlertSound])
 
   const load = useCallback(async (manual = false) => {
     if (loading.current) return
@@ -38,14 +129,18 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
       const next = await response.json() as Feed
       const actionable = next.items.filter(item => item.actionable)
       if (initialized.current) {
-        const fresh = actionable.filter(item => !knownActionableIds.current.has(`${item.kind}-${item.id}`)).length
-        if (fresh) {
-          setNewCount(count => count + fresh)
-          setMessage(`${fresh === 1 ? 'Llegó una nueva solicitud' : `Llegaron ${fresh} solicitudes nuevas`}.`)
+        const fresh = actionable.filter(item => !seenActionableIds.current.has(itemKey(item)))
+        if (fresh.length) {
+          const freshKeys = new Set(fresh.map(itemKey))
+          setNewCount(count => count + fresh.length)
+          setNewItemKeys(freshKeys)
+          if (highlightTimer.current) window.clearTimeout(highlightTimer.current)
+          highlightTimer.current = window.setTimeout(() => setNewItemKeys(new Set()), HIGHLIGHT_DURATION_MS)
           document.title = `(${next.pendingCount}) Asistencia · Tutorías`
+          notifyNewItems(fresh)
         }
       }
-      knownActionableIds.current = new Set(actionable.map(item => `${item.kind}-${item.id}`))
+      for (const item of actionable) seenActionableIds.current.add(itemKey(item))
       initialized.current = true
       setFeed(next)
       if (manual) setMessage('Lista actualizada.')
@@ -54,19 +149,51 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
     } finally {
       loading.current = false
     }
-  }, [basePath])
+  }, [basePath, notifyNewItems])
+
+  useEffect(() => {
+    notificationPermissionRef.current = notificationPermission
+  }, [notificationPermission])
+
+  useEffect(() => {
+    let preferred = false
+    try { preferred = window.sessionStorage.getItem(SOUND_PREFERENCE_KEY) === 'true' } catch { /* Ignore unavailable storage. */ }
+    if (!preferred || soundReadyRef.current) return
+    const resumeAfterInteraction = () => void activateSound()
+    window.addEventListener('pointerdown', resumeAfterInteraction, { once: true })
+    window.addEventListener('keydown', resumeAfterInteraction, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', resumeAfterInteraction)
+      window.removeEventListener('keydown', resumeAfterInteraction)
+    }
+  }, [activateSound])
 
   useEffect(() => {
     let stopped = false
     let timer: number | undefined
     const poll = async () => {
-      if (document.visibilityState !== 'hidden') await load()
+      await load()
       if (!stopped) timer = window.setTimeout(() => void poll(), 5_000)
     }
     void load()
     timer = window.setTimeout(() => void poll(), 5_000)
-    return () => { stopped = true; if (timer) window.clearTimeout(timer); document.title = 'Búsqueda del Tesoro' }
+    return () => { stopped = true; if (timer) window.clearTimeout(timer); if (highlightTimer.current) window.clearTimeout(highlightTimer.current); void audioContext.current?.close(); document.title = 'Búsqueda del Tesoro' }
   }, [load])
+
+  const activateNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      setNotificationPermission('unsupported')
+      return
+    }
+    try {
+      const permission = await Notification.requestPermission()
+      notificationPermissionRef.current = permission
+      setNotificationPermission(permission)
+    } catch {
+      notificationPermissionRef.current = 'denied'
+      setNotificationPermission('denied')
+    }
+  }
 
   const resolve = async (item: FeedItem, body: Record<string, unknown>) => {
     const key = `${item.kind}-${item.id}`
@@ -95,17 +222,22 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
       <h1 className="text-2xl font-black">Asistencia <span className="rounded bg-red-600 px-2 py-1 text-sm text-white">{feed.pendingCount}</span></h1>
       <button type="button" className="rounded border bg-white px-4 py-2 text-sm font-bold hover:bg-neutral-100 active:scale-95 disabled:opacity-50" disabled={loading.current} onClick={() => void load(true)}>Actualizar</button>
     </div>
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button type="button" className="rounded border bg-white px-3 py-2 text-sm font-bold hover:bg-neutral-100 disabled:opacity-60" disabled={soundReady || soundUnavailable} onClick={() => void activateSound()}>{soundReady ? 'Sonido activado' : soundUnavailable ? 'Sonido no disponible' : 'Activar sonido'}</button>
+      {notificationPermission !== 'unsupported' && <button type="button" className="rounded border bg-white px-3 py-2 text-sm font-bold hover:bg-neutral-100 disabled:opacity-60" disabled={notificationPermission === 'granted' || notificationPermission === 'denied'} onClick={() => void activateNotifications()}>{notificationPermission === 'granted' ? 'Notificaciones activadas' : notificationPermission === 'denied' ? 'Notificaciones bloqueadas' : 'Activar notificaciones'}</button>}
+    </div>
     <div className="mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
       <p><strong>Aprobar:</strong> acepta la respuesta y aplica la corrección calculada por el servidor.</p>
       <p><strong>Rechazar:</strong> conserva el resultado incorrecto original.</p>
       <p><strong>Resolver:</strong> marca un problema de QR o ayuda como atendido.</p>
     </div>
-    {(message || newCount > 0) && <div role="status" className="mt-3 rounded bg-amber-100 p-3 text-sm font-bold text-amber-950">{message}<button type="button" className="ml-3 underline" onClick={() => { setMessage(''); setNewCount(0) }}>Cerrar</button></div>}
+    {newCount > 0 && <div role="alert" className="mt-3 rounded border border-orange-300 bg-amber-100 p-3 text-sm text-amber-950"><p className="font-black">Nueva solicitud de asistencia</p><p>{newCount === 1 ? 'Hay un pedido nuevo pendiente.' : `Hay ${newCount} pedidos nuevos pendientes.`}</p><button type="button" className="mt-1 font-bold underline" onClick={() => setNewCount(0)}>Cerrar</button></div>}
+    {message && <div role="status" className="mt-3 rounded bg-blue-50 p-3 text-sm font-bold text-blue-950">{message}<button type="button" className="ml-3 underline" onClick={() => setMessage('')}>Cerrar</button></div>}
     <div className="mt-5 space-y-3">
       {feed.items.map(item => {
         const key = `${item.kind}-${item.id}`
         const busy = busyKey === key
-        return <article key={key} className={`min-w-0 rounded border bg-white p-4 shadow-sm ${item.actionable ? 'border-l-4 border-l-orange-500' : 'opacity-75'}`}>
+        return <article id={itemElementId(item)} key={key} className={`min-w-0 rounded border bg-white p-4 shadow-sm transition-all ${item.actionable ? 'border-l-4 border-l-orange-500' : 'opacity-75'} ${newItemKeys.has(key) ? 'ring-2 ring-orange-400 bg-orange-50' : ''}`}>
           {item.kind === 'SUPPORT' ? <>
             <h2 className="break-words text-base font-black">{item.category === 'QR_DAMAGED' ? `QR ROTO O EXTRAVIADO EN ${(item.label ?? 'ESTACIÓN').toUpperCase()}` : item.category === 'QR_SCAN' ? `PROBLEMA PARA ESCANEAR EN ${(item.label ?? 'ESTACIÓN').toUpperCase()}` : 'OTRO PEDIDO DE AYUDA'}</h2>
             <p className="mt-1 break-words text-sm">Participante: <strong>{item.display_name}</strong></p>
