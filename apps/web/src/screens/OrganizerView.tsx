@@ -153,18 +153,22 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 gap-4 mb-8 lg:grid-cols-4">
           <div className="bg-white p-4 rounded shadow text-center">
             <div className="text-3xl font-bold text-orange-600">{data?.totals.all}</div>
-            <div className="text-sm text-neutral-500 uppercase">Totales</div>
+            <div className="text-sm text-neutral-500 uppercase">Participantes totales</div>
           </div>
           <div className="bg-white p-4 rounded shadow text-center">
             <div className="text-3xl font-bold text-blue-600">{data?.totals.active}</div>
-            <div className="text-sm text-neutral-500 uppercase">En Juego</div>
+            <div className="text-sm text-neutral-500 uppercase">En juego</div>
           </div>
           <div className="bg-white p-4 rounded shadow text-center">
             <div className="text-3xl font-bold text-green-600">{data?.totals.completed}</div>
-            <div className="text-sm text-neutral-500 uppercase">Completados</div>
+            <div className="text-sm text-neutral-500 uppercase">Completaron</div>
+          </div>
+          <div className="bg-white p-4 rounded shadow text-center">
+            <div className="text-3xl font-bold text-red-600">{data?.totals.incomplete ?? 0}</div>
+            <div className="text-sm text-neutral-500 uppercase">No completaron</div>
           </div>
         </div>
 
@@ -233,7 +237,7 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
         {participantToInvalidate && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"><form className="bg-white p-5 rounded w-full max-w-md" onSubmit={(e) => { e.preventDefault(); void handleInvalidar() }}><h2 className="font-bold">Invalidar participación</h2><p className="text-sm mt-2">Queda fuera del ranking y se conserva el historial.</p><textarea required className="w-full border rounded p-2 mt-3" value={invalidationReason} onChange={e => setInvalidationReason(e.target.value)} placeholder="Motivo de invalidación" /><div className="flex gap-2 mt-3"><button className="bg-red-700 text-white px-3 py-2 rounded">Confirmar</button><button type="button" className="border px-3 py-2 rounded" onClick={() => setParticipantToInvalidate(null)}>Cancelar</button></div></form></div>}
         {participantToRelease && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"><div className="bg-white p-5 rounded w-full max-w-md"><h2 className="font-bold">Rehabilitar identificación</h2><p className="text-sm mt-2">La identificación podrá registrarse nuevamente.</p><div className="flex gap-2 mt-3"><button className="bg-neutral-800 text-white px-3 py-2 rounded" onClick={() => void handleRehabilitar()}>Confirmar</button><button className="border px-3 py-2 rounded" onClick={() => setParticipantToRelease(null)}>Cancelar</button></div></div></div>}
 
-        <h2 className="text-xl font-bold mb-4">En Juego (Activos)</h2>
+        <h2 className="text-xl font-bold mb-4">{data.effectiveStatus === 'ENDED' ? 'No completaron' : 'En juego (activos)'}</h2>
         <div className="bg-white rounded shadow overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -247,17 +251,17 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
               </tr>
             </thead>
             <tbody>
-              {data?.active.length === 0 ? (
-                <tr><td colSpan={6} className="p-4 text-center text-neutral-500">No hay sesiones activas</td></tr>
+              {(data.effectiveStatus === 'ENDED' ? data.incomplete : data.active).length === 0 ? (
+                <tr><td colSpan={6} className="p-4 text-center text-neutral-500">{data.effectiveStatus === 'ENDED' ? 'No hay participantes sin completar' : 'No hay sesiones activas'}</td></tr>
               ) : (
-                data?.active.map((p: any) => (
+                (data.effectiveStatus === 'ENDED' ? data.incomplete : data.active).map((p: any) => (
                   <tr key={p.id} className="border-b border-neutral-100">
                     <td className="p-3 font-medium">{p.playerName}</td>
                     <td className="p-3 text-center">
                       <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">Paso {Math.min(p.currentStep, p.totalSteps)} / {p.totalSteps}</span>
                     </td>
                     <td className="p-3 text-xs font-bold whitespace-nowrap">
-                      {p.currentState} · <span className="font-mono">{formatElapsed(elapsedSeconds(p.stateSince, now))}</span>
+                      {p.resultStatus === 'INCOMPLETE' ? 'NO COMPLETÓ' : <>{p.currentState} · <span className="font-mono">{formatElapsed(elapsedSeconds(p.stateSince, now))}</span></>}
                       {p.pendingReview && <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">REVISIÓN</span>}
                     </td>
                     <td className="p-3 text-right text-red-500">{p.wrongCount}</td>

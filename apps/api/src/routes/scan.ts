@@ -41,10 +41,12 @@ import {
 } from '../db/queries.js'
 import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
+import { getExistingSessionLifecycle, withClosingGrace } from '../lib/event-lifecycle.js'
 
 const scanRoutes = new Hono<{ Bindings: Env }>()
 
 export async function processCheckpointScan(c: any, rawToken: string, isFallback = false) {
+  const now = Date.now()
   const cookieHeader = c.req.header('cookie') ?? null
   const sessionToken = getSessionToken(cookieHeader)
   const secure = c.env.ENVIRONMENT === 'production'
@@ -70,10 +72,11 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
   const settings = await getEventSettings(c.env.DB)
   if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
   if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
-  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status ?? 'DRAFT' }, 403)
 
   // 2. No session
   if (!sessionToken) {
+    if (settings?.status === 'CLOSING') return c.json({ state: 'REGISTRATION_CLOSED' })
+    if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status ?? 'DRAFT' }, 403)
     if (checkpoint.is_start === 1) {
       await logScanEvent(c.env.DB, {
         sessionId: null,
@@ -98,6 +101,8 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
   if (!session) {
     // Stale cookie — clear it
     c.header('Set-Cookie', 'gst=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
+    if (settings?.status === 'CLOSING') return c.json({ state: 'REGISTRATION_CLOSED' })
+    if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status ?? 'DRAFT' }, 403)
     if (checkpoint.is_start === 1) {
       await logScanEvent(c.env.DB, {
         sessionId: null,
@@ -131,6 +136,11 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
     })
   }
 
+  if (!settings) return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
+  const lifecycle = getExistingSessionLifecycle(settings, now)
+  if (lifecycle === 'CLOSING_EXPIRED') return c.json({ state: 'CLOSING_EXPIRED' })
+  if (lifecycle !== 'ALLOW') return c.json({ error: 'EVENT_NOT_LIVE', status: settings.status }, 403)
+
   // Refresh cookie
   c.header('Set-Cookie', buildSessionCookie(sessionToken, secure))
 
@@ -143,7 +153,7 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
       outcome: 'START_RESCANNED',
     })
     const state = await buildGameState(c.env.DB, session)
-    return c.json(state)
+    return c.json(withClosingGrace(state, settings, now))
   }
 
   // 6. Check expected checkpoint
@@ -160,7 +170,7 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
       rawToken,
       outcome: 'WRONG_CHECKPOINT',
     })
-    return c.json({ state: 'WRONG_CHECKPOINT' })
+    return c.json(withClosingGrace({ state: 'WRONG_CHECKPOINT' as const }, settings, now))
   }
 
   // 7. Correct checkpoint
@@ -173,7 +183,7 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
       outcome: 'CHALLENGE_RESCANNED',
     })
     const state = await buildGameState(c.env.DB, session)
-    return c.json(state)
+    return c.json(withClosingGrace(state, settings, now))
   }
 
   // First scan of this checkpoint — assign a question pool challenge and unlock
@@ -201,7 +211,7 @@ export async function processCheckpointScan(c: any, rawToken: string, isFallback
 
   const updatedSession = { ...session, unlocked_step: session.current_step }
   const state = await buildGameState(c.env.DB, updatedSession)
-  return c.json(state)
+  return c.json(withClosingGrace(state, settings, now))
 }
 
 scanRoutes.post('/:token', async (c) => processCheckpointScan(c, c.req.param('token')))

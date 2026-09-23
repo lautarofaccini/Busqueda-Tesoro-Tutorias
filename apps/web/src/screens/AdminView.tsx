@@ -115,8 +115,8 @@ export function AdminView() {
         <h1 className="text-xl font-bold mb-4 text-orange-500">Admin Control</h1>
         <div className="mb-8 px-4 py-2 bg-neutral-800 rounded">
           <p className="text-xs text-neutral-400 uppercase tracking-widest mb-1">Estado del Evento</p>
-          <p className={`font-bold ${eventData?.status === 'LIVE' ? 'text-green-500' : eventData?.status === 'PAUSED' ? 'text-yellow-500' : eventData?.status === 'ENDED' ? 'text-red-500' : 'text-neutral-300'}`}>
-            {eventData?.status || 'DESCONOCIDO'}
+          <p className={`font-bold ${eventData?.status === 'LIVE' ? 'text-green-500' : eventData?.status === 'CLOSING' ? 'text-orange-400' : eventData?.status === 'PAUSED' ? 'text-yellow-500' : eventData?.status === 'ENDED' ? 'text-red-500' : 'text-neutral-300'}`}>
+            {eventData?.status === 'CLOSING' ? 'CIERRE EN CURSO' : eventData?.status || 'DESCONOCIDO'}
           </p>
         </div>
         <nav className="flex flex-wrap gap-2 md:flex-col">
@@ -143,33 +143,65 @@ export function AdminView() {
   )
 }
 
-function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (data: any) => void }) {
+export function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (data: any) => void }) {
   const [data, setData] = useState(initialData)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmClosing, setConfirmClosing] = useState(false)
+  const [confirmEnd, setConfirmEnd] = useState(false)
   const [preflightIssues, setPreflightIssues] = useState<any[]>([])
+  const [closingRemaining, setClosingRemaining] = useState(initialData?.closingRemainingSeconds ?? 0)
 
   useEffect(() => setData(initialData), [initialData])
+  useEffect(() => setClosingRemaining(data?.closingRemainingSeconds ?? 0), [data?.closingDeadline, data?.closingRemainingSeconds])
+  useEffect(() => {
+    if (data?.status !== 'CLOSING' || closingRemaining <= 0) return
+    const timer = window.setTimeout(() => setClosingRemaining((value: number) => Math.max(0, value - 1)), 1_000)
+    return () => window.clearTimeout(timer)
+  }, [data?.status, closingRemaining])
 
-  const save = async () => {
+  const payload = (next: any) => ({
+    status: next.status,
+    event_name: next.event_name,
+    points_per_correct: next.points_per_correct,
+    wrong_answer_penalty: next.wrong_answer_penalty,
+    hint_penalty: next.hint_penalty,
+    minimum_expected_completion_minutes: next.minimum_expected_completion_minutes,
+  })
+
+  const save = async (next = data, successMessage = 'Cambios guardados.') => {
     setSaving(true)
     const response = await fetch('/api/admin/event', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(payload(next))
     })
     setSaving(false)
     if (response.ok) {
-      onSaved(data)
+      const saved = await response.json()
+      setData(saved)
+      onSaved(saved)
       setPreflightIssues([])
-      setMessage('Cambios guardados.')
+      setMessage(successMessage)
+      return true
     } else {
       const body = await response.json().catch(() => null)
       setPreflightIssues(body?.issues ?? [])
       setMessage(body?.error === 'LIVE_PREFLIGHT_FAILED' ? 'No se puede iniciar el evento hasta completar esta lista.' : 'No se pudieron guardar los cambios.')
+      return false
     }
   }
+
+  const saveStatus = async (status: string, successMessage: string) => {
+    const changed = await save({ ...data, status }, successMessage)
+    if (changed) {
+      setConfirmClosing(false)
+      setConfirmEnd(false)
+    }
+  }
+
+  const formatRemaining = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 
   return (
     <div className="max-w-2xl bg-white p-6 rounded shadow">
@@ -177,18 +209,23 @@ function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (d
       {preflightIssues.length > 0 && <div className="mb-6 rounded border border-red-300 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">NO SE PUEDE INICIAR EL EVENTO</p><ul className="mt-2 list-disc pl-5">{preflightIssues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}</li>)}</ul></div>}
       
       <div className="mb-6 border-b pb-6">
-        <label className="block text-sm font-bold mb-2">Estado del Evento</label>
-        <select 
-          className="border rounded p-2 w-full mb-2"
-          value={data.status}
-          onChange={e => setData({...data, status: e.target.value})}
-        >
-          <option value="DRAFT">BORRADOR (DRAFT) - Jugadores bloqueados</option>
-          <option value="LIVE">EN VIVO (LIVE) - Juego activo</option>
-          <option value="PAUSED">PAUSADO (PAUSED) - Juego detenido temporalmente</option>
-          <option value="ENDED">FINALIZADO (ENDED) - Juego terminado</option>
-        </select>
-        <p className="text-sm text-neutral-500">Cambiar el estado afecta inmediatamente a todos los jugadores.</p>
+        <p className="block text-sm font-bold mb-2">Estado del Evento</p>
+        {data.status === 'CLOSING' ? (
+          <div className="rounded border-2 border-orange-400 bg-orange-50 p-4" role="status">
+            <p className="font-black text-orange-900">{closingRemaining > 0 ? 'CIERRE EN CURSO — solo jugadores actuales' : 'CIERRE EN CURSO — PLAZO FINALIZADO'}</p>
+            <dl className="mt-3 grid gap-1 text-sm"><div><dt className="inline font-bold">Nuevos ingresos: </dt><dd className="inline">bloqueados</dd></div><div><dt className="inline font-bold">Jugadores activos: </dt><dd className="inline">{closingRemaining > 0 ? 'pueden continuar' : 'ya no pueden continuar'}</dd></div><div><dt className="inline font-bold">Tiempo restante: </dt><dd className="inline font-mono text-lg">{formatRemaining(closingRemaining)}</dd></div></dl>
+          </div>
+        ) : (
+          <div className="rounded border bg-neutral-50 p-3 font-bold">{data.status === 'LIVE' ? 'EN VIVO — juego activo' : data.status === 'PAUSED' ? 'PAUSADO — juego detenido temporalmente' : data.status === 'ENDED' ? 'FINALIZADO — juego terminado' : 'BORRADOR — jugadores bloqueados'}</div>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {data.status === 'DRAFT' && <button disabled={saving} className="rounded bg-green-700 px-4 py-2 font-bold text-white disabled:opacity-50" onClick={() => void saveStatus('LIVE', 'Evento iniciado.')}>Iniciar evento</button>}
+          {data.status === 'LIVE' && <><button disabled={saving} className="rounded bg-orange-600 px-4 py-2 font-bold text-white disabled:opacity-50" onClick={() => setConfirmClosing(true)}>Cerrar inscripciones</button><button disabled={saving} className="rounded border px-4 py-2 font-bold disabled:opacity-50" onClick={() => void saveStatus('PAUSED', 'Evento pausado.')}>Pausar</button></>}
+          {data.status === 'PAUSED' && <button disabled={saving} className="rounded bg-green-700 px-4 py-2 font-bold text-white disabled:opacity-50" onClick={() => void saveStatus('LIVE', 'Evento reanudado.')}>Reanudar evento</button>}
+          {data.status !== 'ENDED' && <button disabled={saving} className="rounded border border-red-500 px-4 py-2 font-bold text-red-700 disabled:opacity-50" onClick={() => setConfirmEnd(true)}>Finalizar ahora</button>}
+        </div>
+        {confirmClosing && <div className="mt-4 rounded border border-orange-300 bg-orange-50 p-4"><p className="whitespace-pre-line font-bold">Se bloquearán nuevos participantes.{`\n`}Los jugadores actuales tendrán 30 minutos para terminar.</p><div className="mt-3 flex gap-2"><button disabled={saving} className="rounded bg-orange-700 px-4 py-2 font-bold text-white" onClick={() => void saveStatus('CLOSING', 'Inscripciones cerradas. Comenzó el plazo de 30 minutos.')}>Confirmar cierre</button><button className="rounded border px-4 py-2" onClick={() => setConfirmClosing(false)}>Cancelar</button></div></div>}
+        {confirmEnd && <div className="mt-4 rounded border border-red-300 bg-red-50 p-4"><p className="font-bold text-red-900">Esto detendrá el juego inmediatamente.</p>{data.activeSessions > 0 && <p className="mt-1 text-sm text-red-900">Hay {data.activeSessions} jugador{data.activeSessions === 1 ? '' : 'es'} activo{data.activeSessions === 1 ? '' : 's'} que ya no podrá{data.activeSessions === 1 ? '' : 'n'} continuar.</p>}<div className="mt-3 flex gap-2"><button disabled={saving} className="rounded bg-red-700 px-4 py-2 font-bold text-white" onClick={() => void saveStatus('ENDED', 'Evento finalizado.')}>Confirmar finalización inmediata</button><button className="rounded border px-4 py-2" onClick={() => setConfirmEnd(false)}>Cancelar</button></div></div>}
       </div>
 
       <div className="mb-4">
@@ -208,7 +245,7 @@ function EventSettings({ initialData, onSaved }: { initialData: any, onSaved: (d
       </div>
 
       <div className="flex gap-4">
-        <button onClick={save} disabled={saving} className="bg-orange-600 text-white px-6 py-2 rounded">
+        <button onClick={() => void save()} disabled={saving} className="bg-orange-600 text-white px-6 py-2 rounded">
           {saving ? 'Guardando...' : 'Guardar Cambios'}
         </button>
 

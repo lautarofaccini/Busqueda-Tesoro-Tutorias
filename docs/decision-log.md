@@ -91,3 +91,8 @@
 - *Reason:* A randomized session must reveal only the current destination, while organizers need a clear place to manage its guidance and local conduct notice.
 - *Decision:* Each active non-start checkpoint requires one primary clue; it may have one optional secondary clue and an optional instruction. Secondary-clue use is server-side audited per session step. The configured hint penalty remains unapplied until an explicit scoring decision and test are approved.
 - *Status:* Accepted.
+
+**CLOSING grace period is derived from event settings**
+- *Reason:* Closing registrations must not immediately interrupt participants who already started, and the deadline must work without a cron job or schema change.
+- *Decision:* `event_settings.status = 'CLOSING'` blocks every new session immediately. The existing `event_settings.updated_at` value records entry into CLOSING and defines an exact 30-minute server-side grace period. A CLOSING-to-CLOSING settings save preserves that timestamp atomically. Existing active sessions may progress during the grace period; at the deadline they become effectively incomplete without mutating their persisted session or partial history. Only persisted completed sessions enter the competitive ranking.
+- *Status:* Accepted.

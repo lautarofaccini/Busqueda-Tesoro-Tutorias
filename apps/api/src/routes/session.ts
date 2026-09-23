@@ -49,6 +49,9 @@ sessionRoutes.post(
     
     // Check event lifecycle
     const settings = await getEventSettings(c.env.DB)
+    if (settings?.status === 'CLOSING') {
+      return c.json({ state: 'REGISTRATION_CLOSED', error: 'REGISTRATION_CLOSED' }, 403)
+    }
     if (!settings || settings.status !== 'LIVE') {
       return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status || 'DRAFT' }, 403)
     }

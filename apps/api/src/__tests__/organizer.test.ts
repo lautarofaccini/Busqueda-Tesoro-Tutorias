@@ -82,7 +82,7 @@ describe('Organizer API', () => {
     })
     expect(res.status).toBe(200)
     const data = await res.json() as any
-    expect(data.totals).toEqual({ all: 3, active: 2, completed: 1 })
+    expect(data.totals).toEqual({ all: 3, active: 2, completed: 1, incomplete: 0, invalidated: 0 })
     expect(data.ranking).toHaveLength(1)
     expect(data.active.map((player: any) => player.currentState).sort()).toEqual(['BUSCANDO_QR', 'RESPONDIENDO'])
   })
@@ -176,4 +176,5 @@ describe('Organizer API', () => {
     expect(logout.status).toBe(200)
     expect(logout.headers.get('set-cookie')).toContain('Max-Age=0')
   })
+
 })

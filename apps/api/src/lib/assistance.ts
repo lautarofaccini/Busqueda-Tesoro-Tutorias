@@ -1,5 +1,6 @@
 import { advanceStep, completeSession, getSessionTotalSteps } from '../db/queries.js'
 import { parsePersistedUtc } from './timestamps.js'
+import { isClosingGraceActive } from './event-lifecycle.js'
 
 export type AssistanceDecision = { approve: boolean; addAlias?: boolean | undefined; note?: string | undefined }
 
@@ -47,6 +48,14 @@ export async function resolveAnswerReview(db: D1Database, id: number, decision: 
   const review = await db.prepare('SELECT * FROM answer_review_requests WHERE id = ?').bind(id).first<any>()
   if (!review) return { status: 404 as const, body: { error: 'NOT_FOUND' } }
   if (review.status !== 'PENDING') return { status: 200 as const, body: { success: true, idempotent: true } }
+
+  const reviewSession = await db.prepare('SELECT status FROM sessions WHERE id=?').bind(review.session_id).first<{ status: string }>()
+  if (reviewSession?.status === 'active') {
+    const settings = await db.prepare('SELECT status, updated_at FROM event_settings WHERE id=1').first<any>()
+    if (settings?.status === 'CLOSING' && !isClosingGraceActive(settings, Date.now())) {
+      return { status: 409 as const, body: { state: 'CLOSING_EXPIRED' } }
+    }
+  }
 
   if (!decision.approve) {
     await db.prepare("UPDATE answer_review_requests SET status='REJECTED', organizer_note=?, resolved_at=datetime('now') WHERE id=? AND status='PENDING'").bind(decision.note ?? null, id).run()

@@ -1,8 +1,9 @@
 import { MobileShell } from '../components/MobileShell'
 import { BrandHeader } from '../components/BrandHeader'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { submitFallbackCode } from '../api/client'
+import { getGameState, submitFallbackCode } from '../api/client'
+import { EventPausedEndedView } from '../components/EventPausedEndedView'
 
 /**
  * PublicEntry — shown when someone opens the site without a valid QR.
@@ -16,13 +17,25 @@ export function PublicEntry() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [code, setCode] = useState('')
   const [message, setMessage] = useState('')
+  const [entryBlock, setEntryBlock] = useState<'REGISTRATION_CLOSED' | 'CLOSING_EXPIRED' | null>(null)
+  const [checkingStatus, setCheckingStatus] = useState(true)
+  useEffect(() => {
+    void getGameState().then(state => {
+      if (state.state === 'REGISTRATION_CLOSED' || state.state === 'CLOSING_EXPIRED') setEntryBlock(state.state)
+      else if (state.state === 'ACTIVE' || state.state === 'ADVANCED' || state.state === 'CHALLENGE' || state.state === 'ANSWER_INCORRECT') void navigate('/game', { replace: true })
+      else if (state.state === 'COMPLETED') void navigate('/finish', { replace: true })
+    }).catch(() => undefined).finally(() => setCheckingStatus(false))
+  }, [navigate])
   const submit = async () => {
     try {
       const state = await submitFallbackCode(code.trim())
-      if (state.state === 'START_ALLOWED') void navigate(`/q/${state.startToken}`, { replace: true })
+      if (state.state === 'REGISTRATION_CLOSED') setEntryBlock('REGISTRATION_CLOSED')
+      else if (state.state === 'START_ALLOWED') void navigate(`/q/${state.startToken}`, { replace: true })
       else setMessage('Ese código no permite iniciar la búsqueda.')
     } catch { setMessage('No se pudo validar el código.') }
   }
+  if (checkingStatus) return <MobileShell><BrandHeader /><main className="flex flex-1 items-center justify-center"><p className="text-sm font-medium text-muted">Verificando el evento…</p></main></MobileShell>
+  if (entryBlock) return <EventPausedEndedView state={entryBlock} />
   return (
     <MobileShell>
       <BrandHeader />

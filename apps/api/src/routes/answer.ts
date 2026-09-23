@@ -39,6 +39,7 @@ import {
 import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
 import { parsePersistedUtc } from '../lib/timestamps.js'
+import { getExistingSessionLifecycle, withClosingGrace } from '../lib/event-lifecycle.js'
 
 const answerRoutes = new Hono<{ Bindings: Env }>()
 
@@ -50,6 +51,7 @@ answerRoutes.post(
     }
   }),
   async (c) => {
+    const now = Date.now()
     const rawId = c.req.param('challengeId')
     const challengeId = parseInt(rawId, 10)
     if (isNaN(challengeId)) {
@@ -70,10 +72,13 @@ answerRoutes.post(
       return c.json({ error: 'SESSION_NOT_FOUND' }, 401)
     }
 
-  const settings = await getEventSettings(c.env.DB)
-  if (settings?.status === 'PAUSED') return c.json({ state: 'EVENT_PAUSED' })
-  if (settings?.status === 'ENDED') return c.json({ state: 'EVENT_ENDED' })
-  if (settings?.status !== 'LIVE') return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
+    const settings = await getEventSettings(c.env.DB)
+    if (!settings) return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
+    const lifecycle = getExistingSessionLifecycle(settings, now)
+    if (lifecycle === 'EVENT_PAUSED') return c.json({ state: 'EVENT_PAUSED' })
+    if (lifecycle === 'EVENT_ENDED') return c.json({ state: 'EVENT_ENDED' })
+    if (lifecycle === 'CLOSING_EXPIRED') return c.json({ state: 'CLOSING_EXPIRED' })
+    if (lifecycle !== 'ALLOW') return c.json({ error: 'EVENT_NOT_LIVE' }, 403)
 
     // 2. Challenge must be unlocked (player must have scanned the checkpoint first)
     if (session.unlocked_step !== session.current_step) {
@@ -117,7 +122,7 @@ answerRoutes.post(
       const usedHint = await hasUsedQuestionHint(c.env.DB, session.id, assignedChallenge.id)
       const score = await getSessionScore(c.env.DB, session.id)
       // No advancement, unlock preserved
-      return c.json({
+      return c.json(withClosingGrace({
         state: 'ANSWER_INCORRECT',
         challengeId: assignedChallenge.id,
         question: assignedChallenge.question_text,
@@ -129,7 +134,7 @@ answerRoutes.post(
         hint: usedHint ? assignedChallenge.hint_text : undefined,
         cooldownRemaining: 10,
         attemptId,
-      })
+      }, settings, now))
     }
 
 
@@ -161,9 +166,9 @@ answerRoutes.post(
     const state = await buildGameState(c.env.DB, updatedSession)
     // Tag as ADVANCED to let client distinguish from a plain state recovery
     if (state.state === 'ACTIVE') {
-      return c.json({ ...state, state: 'ADVANCED' as const })
+      return c.json(withClosingGrace({ ...state, state: 'ADVANCED' as const }, settings, now))
     }
-    return c.json(state)
+    return c.json(withClosingGrace(state, settings, now))
   }
 )
 

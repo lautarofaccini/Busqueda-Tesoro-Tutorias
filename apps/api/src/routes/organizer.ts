@@ -8,6 +8,7 @@ import { calculateScore } from '../lib/scoring.js'
 import { timingSafeSecretEqual, verifyTotp } from '../lib/totp.js'
 import { deriveOperationalPlayerState } from '../lib/game-state.js'
 import { parsePersistedUtc } from '../lib/timestamps.js'
+import { getClosingDeadline, getClosingRemainingSeconds, getEffectiveEventStatus, getSessionResultStatus, isCompetitiveCompletedSession } from '../lib/event-lifecycle.js'
 
 
 export const organizerRoutes = new Hono<{ Bindings: Env }>()
@@ -72,9 +73,14 @@ organizerRoutes.get('/players/:sessionId', async (c) => {
   if (!Number.isInteger(sessionId) || sessionId <= 0) return c.json({ error: 'INVALID_SESSION_ID' }, 400)
   const detail = await getOrganizerPlayerDetail(c.env.DB, sessionId)
   if (!detail) return c.json({ error: 'NOT_FOUND' }, 404)
+  const settings = await c.env.DB.prepare('SELECT status, updated_at FROM event_settings WHERE id=1').first<any>()
+  const effectiveStatus = settings ? getEffectiveEventStatus(settings) : 'DRAFT'
+  const resultStatus = getSessionResultStatus(detail.status, effectiveStatus)
+  const incomplete = resultStatus === 'INCOMPLETE'
   return c.json({
     ...detail,
-    currentState: deriveOperationalPlayerState({
+    resultStatus,
+    currentState: incomplete ? 'NO_COMPLETO' : deriveOperationalPlayerState({
       status: detail.status,
       current_step: detail.currentStep,
       unlocked_step: detail.unlockedStep,
@@ -88,16 +94,11 @@ organizerRoutes.get('/results', async (c) => {
   }
 
   const rawResults = await getOrganizerResults(c.env.DB)
-  let activeSessions = 0
-  let completedSessions = 0
+  const now = Date.now()
+  const settings = await c.env.DB.prepare('SELECT status, updated_at FROM event_settings WHERE id=1').first<any>()
+  const effectiveStatus = settings ? getEffectiveEventStatus(settings, now) : 'DRAFT'
 
   const players = await Promise.all(rawResults.map(async (r: any) => {
-    // If invalidated, we don't count it towards competitive totals in the same way, but let's include it for the admin UI to see.
-    if (!r.invalidatedAt) {
-      if (r.status === 'completed') completedSessions++
-      else if (r.status === 'active') activeSessions++
-    }
-
     // Only compute score if completed
     let score = null
     let durationSec = null
@@ -127,6 +128,7 @@ organizerRoutes.get('/results', async (c) => {
       completedAt: r.completedAt,
       totalSteps: Number(r.totalSteps),
     })
+    const resultStatus = getSessionResultStatus(r.status, effectiveStatus)
     return {
       id: r.id, // Session ID
       participantId: r.participantId,
@@ -146,9 +148,10 @@ organizerRoutes.get('/results', async (c) => {
       score,
       durationSec,
       needsReview,
-      currentState: deriveOperationalPlayerState({ status: r.status, current_step: Number(r.currentStep), unlocked_step: r.unlockedStep === null ? null : Number(r.unlockedStep) }),
+      currentState: resultStatus === 'INCOMPLETE' ? 'NO_COMPLETO' : deriveOperationalPlayerState({ status: r.status, current_step: Number(r.currentStep), unlocked_step: r.unlockedStep === null ? null : Number(r.unlockedStep) }),
       stateSince: stateSince.value,
       pendingReview: Boolean(r.pendingReview),
+      resultStatus,
     }
   }))
 
@@ -158,7 +161,7 @@ organizerRoutes.get('/results', async (c) => {
   // Only completed sessions get a rank
   
   const completed = players
-    .filter(p => p.status === 'completed' && !p.invalidatedAt)
+    .filter(p => isCompetitiveCompletedSession(p.status, p.invalidatedAt))
     .map(p => ({ ...p, rank: 0, isTied: false }))
     
   // Sort descending by score
@@ -181,19 +184,28 @@ organizerRoutes.get('/results', async (c) => {
     completed[i]!.isTied = completed.some((other, index) => index !== i && other.score === completed[i]!.score)
   }
 
-  const active = players.filter(p => p.status !== 'completed' && !p.invalidatedAt)
+  const active = players.filter(p => p.resultStatus === 'IN_PROGRESS' && !p.invalidatedAt)
+  const incomplete = players.filter(p => p.resultStatus === 'INCOMPLETE' && !p.invalidatedAt)
   const invalidated = players.filter(p => p.invalidatedAt)
   // Display ordering purely, no rank
   active.sort((a, b) => parsePersistedUtc(b.startedAt) - parsePersistedUtc(a.startedAt))
+  incomplete.sort((a, b) => parsePersistedUtc(b.startedAt) - parsePersistedUtc(a.startedAt))
 
   return c.json({
     totals: {
       all: players.length,
-      active: activeSessions,
-      completed: completedSessions
+      active: active.length,
+      completed: completed.length,
+      incomplete: incomplete.length,
+      invalidated: invalidated.length,
     },
+    eventStatus: settings?.status ?? 'DRAFT',
+    effectiveStatus,
+    closingDeadline: settings ? getClosingDeadline(settings) : null,
+    closingRemainingSeconds: settings ? getClosingRemainingSeconds(settings, now) : 0,
     ranking: completed,
     active,
+    incomplete,
     invalidated
   })
 })

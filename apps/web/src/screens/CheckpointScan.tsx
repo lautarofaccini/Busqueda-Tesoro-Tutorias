@@ -12,6 +12,7 @@ import { EventPausedEndedView } from '../components/EventPausedEndedView'
 import { GameplayRulesButton } from '../components/GameplayRulesButton'
 import { acknowledgeReview, isReviewAcknowledged } from '../lib/reviewAcknowledgement'
 import { parsePersistedUtc } from '../lib/eventTime'
+import { ClosingGraceNotice } from '../components/ClosingGraceNotice'
 
 /**
  * CheckpointScan — production screen for /q/:token.
@@ -86,7 +87,7 @@ export function CheckpointScan() {
     )
   }
 
-  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
+  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED' || state.state === 'REGISTRATION_CLOSED' || state.state === 'CLOSING_EXPIRED') {
     return <EventPausedEndedView state={state.state} />
   }
 
@@ -98,7 +99,7 @@ export function CheckpointScan() {
     return <StartForm startToken={gameState.startToken} onStarted={setGameState} />
   }
   if (gameState.state === 'WRONG_CHECKPOINT') {
-    return <WrongCheckpointScreen onBack={() => void navigate('/game')} />
+    return <WrongCheckpointScreen closing={gameState.closing} onBack={() => void navigate('/game')} />
   }
   if (gameState.state === 'CHALLENGE' || gameState.state === 'ANSWER_INCORRECT') {
     return (
@@ -198,7 +199,9 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
         onStarted(state)
       }
     } catch (e: any) {
-      if (e.message?.includes('DUPLICATE_PARTICIPATION')) {
+      if (e instanceof ApiError && e.body?.error === 'REGISTRATION_CLOSED') {
+        onStarted({ state: 'REGISTRATION_CLOSED' })
+      } else if (e.message?.includes('DUPLICATE_PARTICIPATION')) {
         setErr('Ya existe una participación activa para esta persona.')
       } else {
         setErr('No se pudo iniciar la sesión. Verificá los datos e intentá de nuevo.')
@@ -286,8 +289,8 @@ function StartForm({ startToken, onStarted }: StartFormProps) {
 }
 
 
-function WrongCheckpointScreen({ onBack }: { onBack: () => void }) {
-  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-8"><h1 className="text-2xl font-black">Este no es tu próximo punto.</h1><p className="mt-3 text-muted">Volvé a leer la pista y buscá el QR correcto.</p><Button className="mt-6" onClick={onBack}>Ver mi pista</Button></main></MobileShell>
+function WrongCheckpointScreen({ closing, onBack }: { closing: Extract<GameState, { state: 'WRONG_CHECKPOINT' }>['closing']; onBack: () => void }) {
+  return <MobileShell><BrandHeader /><main className="flex-1 px-6 pt-8"><ClosingGraceNotice closing={closing} /><h1 className="text-2xl font-black">Este no es tu próximo punto.</h1><p className="mt-3 text-muted">Volvé a leer la pista y buscá el QR correcto.</p><Button className="mt-6" onClick={onBack}>Ver mi pista</Button></main></MobileShell>
 }
 
 export function ChallengeScreen({ state, onResult }: { state: Extract<GameState, { state: 'CHALLENGE' | 'ANSWER_INCORRECT' }>, onResult: (state: GameState) => void }) {
@@ -310,6 +313,14 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   const resultHandler = useRef(onResult)
   resultHandler.current = onResult
   const reviewAttemptId = state.state === 'ANSWER_INCORRECT' ? state.attemptId : undefined
+  const submitPlayerSupport = async (category: 'QR_SCAN' | 'QR_DAMAGED' | 'OTHER') => {
+    const result = await submitSupport(category)
+    if ('state' in result) {
+      onResult(result)
+      return { success: false, message: 'El tiempo para finalizar terminó.' }
+    }
+    return result
+  }
 
   const [phase, setPhase] = useState<'A' | 'B'>('A')
 
@@ -458,6 +469,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       <MobileShell>
         <BrandHeader rightElement={<GameplayRulesButton />} />
         <main onClick={() => setPhase('B')} className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
+          <ClosingGraceNotice closing={state.closing} />
           <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
           </div>
@@ -475,6 +487,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       <MobileShell>
         <BrandHeader rightElement={<GameplayRulesButton />} />
         <main onClick={() => setPhase('B')} className="flex-1 px-6 flex flex-col justify-center items-center text-center animate-scale-in motion-reduce:animate-none">
+          <ClosingGraceNotice closing={state.closing} />
           <div className="mb-4 inline-flex px-3 py-1 bg-amber-100 text-amber-900 text-sm font-black rounded uppercase tracking-widest">DESAFÍO</div>
           <h1 className="text-3xl font-black text-foreground leading-tight">{state.question}</h1>
           <p className="mt-6 text-sm text-muted">Tocá para responder</p>
@@ -489,6 +502,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   return <MobileShell>
     <BrandHeader rightElement={<GameplayRulesButton />} />
     <main className="flex-1 px-6 pt-7 pb-8">
+      <ClosingGraceNotice closing={state.closing} />
       <div className="flex justify-between">
         <p className="text-xs font-bold text-brand uppercase">{state.stepNumber === 0 ? 'Desafío inicial' : `Desafío ${state.stepNumber} de ${state.totalSteps}`}</p>
         <ScoreDisplay score={state.score} />
@@ -508,7 +522,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       </div>
       {confirmReview && reviewAttemptId && <div className="mt-3 rounded border bg-surface-warm p-3 text-sm">
         <p className="font-bold">Tu respuesta quedará en evaluación por Tutorías.</p>
-        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { await submitAnswerReview(reviewAttemptId); setConfirmReview(false); const status = await getSupportStatus(); setReview(status.reviews.find(item => item.answer_attempt_id === reviewAttemptId) ?? null); setReviewPollNonce(value => value + 1) }}>Enviar a revisión</button>
+        <button className="mt-3 rounded bg-brand px-3 py-2 text-white" onClick={async () => { const result = await submitAnswerReview(reviewAttemptId); setConfirmReview(false); if ('state' in result) { onResult(result); return } const status = await getSupportStatus(); setReview(status.reviews.find(item => item.answer_attempt_id === reviewAttemptId) ?? null); setReviewPollNonce(value => value + 1) }}>Enviar a revisión</button>
         <button className="ml-2" onClick={() => setConfirmReview(false)}>Seguir intentando</button>
       </div>}
       {confirmHint && <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
@@ -518,7 +532,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
       </div>}
       {pending && <div className="mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm"><p className="font-bold">Respuesta en evaluación</p><p>Un tutor está revisándola. Podés seguir intentando mientras Tutorías revisa tu respuesta.</p>{oldPending && <p className="mt-2 font-medium">¿Todavía no tenés respuesta?<br />Acercate a la oficina de Tutorías y te ayudamos.</p>}</div>}
       {reviewNotice && review?.status !== 'PENDING' && <div className={`mt-4 rounded border p-3 text-sm ${reviewNotice.status === 'REJECTED' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}><span>{reviewNotice.text}</span><button className="ml-3 underline" onClick={() => { acknowledgeReview(reviewNotice.reviewId); setReviewNotice(null) }}>Cerrar</button></div>}
-      {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Este desafío ya está desbloqueado. Podés continuar respondiendo.')}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting || !reviewAttemptId || pending} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmReview(true) }}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm font-bold text-brand" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
+      {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Este desafío ya está desbloqueado. Podés continuar respondiendo.')}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting || !reviewAttemptId || pending} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmReview(true) }}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitPlayerSupport('OTHER'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitPlayerSupport('QR_DAMAGED'); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm font-bold text-brand" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </main>
   </MobileShell>

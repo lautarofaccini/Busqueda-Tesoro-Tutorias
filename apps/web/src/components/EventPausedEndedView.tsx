@@ -1,8 +1,10 @@
 import { MobileShell } from './MobileShell'
 import { BrandHeader } from './BrandHeader'
 
-export function EventPausedEndedView({ state }: { state: 'EVENT_PAUSED' | 'EVENT_ENDED' }) {
+export function EventPausedEndedView({ state }: { state: 'EVENT_PAUSED' | 'EVENT_ENDED' | 'REGISTRATION_CLOSED' | 'CLOSING_EXPIRED' }) {
   const isPaused = state === 'EVENT_PAUSED'
+  const isRegistrationClosed = state === 'REGISTRATION_CLOSED'
+  const isClosingExpired = state === 'CLOSING_EXPIRED'
   
   return (
     <MobileShell>
@@ -18,12 +20,16 @@ export function EventPausedEndedView({ state }: { state: 'EVENT_PAUSED' | 'EVENT
           </svg>
         </div>
         <h1 className="text-2xl font-black text-foreground mb-3">
-          {isPaused ? 'Juego Pausado' : 'Juego Finalizado'}
+          {isPaused ? 'Juego Pausado' : isRegistrationClosed ? 'Inscripciones cerradas' : isClosingExpired ? 'Tiempo finalizado' : 'Juego Finalizado'}
         </h1>
         <p className="text-base text-muted font-medium leading-relaxed max-w-sm mx-auto">
-          {isPaused 
+          {isPaused
             ? 'Los organizadores han pausado la búsqueda del tesoro temporalmente. Mantené esta pantalla abierta, podrás continuar tu progreso cuando se reanude.'
-            : 'Los organizadores han finalizado la búsqueda del tesoro. ¡Gracias por participar! Acercate al stand de Tutorías para conocer los resultados.'}
+            : isRegistrationClosed
+              ? 'Las inscripciones ya cerraron.'
+              : isClosingExpired
+                ? 'El tiempo para finalizar terminó. Tu recorrido y tu resultado parcial quedaron guardados.'
+                : 'Los organizadores han finalizado la búsqueda del tesoro. ¡Gracias por participar! Acercate al stand de Tutorías para conocer los resultados.'}
         </p>
       </main>
     </MobileShell>

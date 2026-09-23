@@ -12,8 +12,51 @@ import {
 import { getLivePreflightIssues } from '../db/queries.js'
 import { getAssignedChallenge, getRandomActiveChallengeForCheckpoint, assignChallenge } from '../db/queries.js'
 import { getAssistanceFeed, resolveAnswerReview, resolveSupportRequest } from '../lib/assistance.js'
+import { getClosingDeadline, getClosingRemainingSeconds, getEffectiveEventStatus, isClosingGraceActive } from '../lib/event-lifecycle.js'
 
 export const adminRoutes = new Hono<{ Bindings: Env }>()
+
+export const EVENT_SETTINGS_UPDATE_SQL = `
+    UPDATE event_settings SET
+      updated_at = CASE
+        WHEN status = 'CLOSING' AND ? = 'CLOSING' THEN updated_at
+        ELSE datetime('now')
+      END,
+      status = ?,
+      event_name = ?,
+      points_per_correct = ?,
+      wrong_answer_penalty = ?,
+      hint_penalty = ?,
+      minimum_expected_completion_minutes = ?
+    WHERE id = 1
+  `
+
+export async function updateEventSettings(db: D1Database, data: z.infer<typeof eventSettingsSchema>) {
+  await db.prepare(EVENT_SETTINGS_UPDATE_SQL).bind(
+    data.status,
+    data.status,
+    data.event_name,
+    data.points_per_correct,
+    data.wrong_answer_penalty,
+    data.hint_penalty,
+    data.minimum_expected_completion_minutes,
+  ).run()
+}
+
+async function getEventOverview(db: D1Database, now = Date.now()) {
+  const settings = await db.prepare('SELECT * FROM event_settings WHERE id = 1').first<any>()
+  if (!settings) return null
+  const active = await db.prepare(`SELECT COUNT(*) AS count FROM sessions s
+    JOIN participants p ON p.id = s.participant_id
+    WHERE s.status = 'active' AND p.invalidated_at IS NULL`).first<{ count: number }>()
+  return {
+    ...settings,
+    effectiveStatus: getEffectiveEventStatus(settings, now),
+    closingDeadline: getClosingDeadline(settings),
+    closingRemainingSeconds: getClosingRemainingSeconds(settings, now),
+    activeSessions: Number(active?.count ?? 0),
+  }
+}
 
 // Auth middleware for all admin routes
 adminRoutes.use('*', async (c, next) => {
@@ -26,8 +69,7 @@ adminRoutes.use('*', async (c, next) => {
 
 // --- EVENT SETTINGS ---
 adminRoutes.get('/event', async (c) => {
-  const settings = await c.env.DB.prepare('SELECT * FROM event_settings WHERE id = 1').first()
-  return c.json(settings)
+  return c.json(await getEventOverview(c.env.DB))
 })
 
 adminRoutes.get('/event/preflight', async (c) => {
@@ -41,26 +83,9 @@ adminRoutes.put('/event', zValidator('json', eventSettingsSchema), async (c) => 
     const issues = await getLivePreflightIssues(c.env.DB)
     if (issues.length) return c.json({ error: 'LIVE_PREFLIGHT_FAILED', issues }, 422)
   }
-  await c.env.DB.prepare(`
-    UPDATE event_settings SET 
-      status = ?, 
-      event_name = ?, 
-      points_per_correct = ?, 
-      wrong_answer_penalty = ?, 
-      hint_penalty = ?, 
-      minimum_expected_completion_minutes = ?,
-      updated_at = datetime('now')
-    WHERE id = 1
-  `).bind(
-    data.status,
-    data.event_name,
-    data.points_per_correct,
-    data.wrong_answer_penalty,
-    data.hint_penalty,
-    data.minimum_expected_completion_minutes
-  ).run()
-  
-  return c.json({ success: true })
+  await updateEventSettings(c.env.DB, data)
+  const overview = await getEventOverview(c.env.DB)
+  return c.json(overview ? { success: true, ...overview } : { success: true })
 })
 
 // --- CHECKPOINTS ---
@@ -238,6 +263,10 @@ adminRoutes.post('/assistance/support/:id/resolve', zValidator('json', z.object(
 adminRoutes.post('/participants/:id/manual-checkpoint', async (c) => {
   const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE participant_id=? AND status='active' ORDER BY id DESC LIMIT 1").bind(Number(c.req.param('id'))).first<any>()
   if (!session) return c.json({ error: 'NO_ACTIVE_SESSION' }, 404)
+  const settings = await c.env.DB.prepare('SELECT status, updated_at FROM event_settings WHERE id=1').first<any>()
+  if (settings?.status === 'CLOSING' && !isClosingGraceActive(settings, Date.now())) {
+    return c.json({ state: 'CLOSING_EXPIRED' }, 409)
+  }
   const step = await c.env.DB.prepare('SELECT checkpoint_id FROM session_steps WHERE session_id=? AND position=?').bind(session.id, session.current_step).first<{checkpoint_id:number}>()
   if (!step) return c.json({ error: 'ROUTE_ERROR' }, 400)
   if (!await getAssignedChallenge(c.env.DB, session.id, session.current_step)) {

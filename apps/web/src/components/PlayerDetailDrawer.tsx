@@ -8,7 +8,8 @@ export type PlayerDetail = {
   identifierType: string
   identifierSuffix: string
   status: string
-  currentState: 'RESPONDIENDO' | 'BUSCANDO_QR' | 'FINALIZADO'
+  currentState: 'RESPONDIENDO' | 'BUSCANDO_QR' | 'FINALIZADO' | 'NO_COMPLETO'
+  resultStatus?: 'COMPLETED' | 'INCOMPLETE' | 'IN_PROGRESS'
   currentStep: number
   totalSteps: number
   startedAt: string
@@ -67,7 +68,7 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
         const response = await fetch(`/api/organizer/players/${sessionId}`)
         if (!response.ok) throw new Error('LOAD_FAILED')
         const next = await response.json() as PlayerDetail
-        shouldContinue = next.currentState !== 'FINALIZADO'
+        shouldContinue = next.currentState !== 'FINALIZADO' && next.currentState !== 'NO_COMPLETO'
         if (!stopped) {
           setDetail(next)
           setNow(Date.now())
@@ -84,7 +85,7 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
   }, [sessionId])
 
   useEffect(() => {
-    if (!detail || detail.currentState === 'FINALIZADO') return
+    if (!detail || detail.currentState === 'FINALIZADO' || detail.currentState === 'NO_COMPLETO') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
   }, [detail?.currentState])
@@ -111,7 +112,7 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
           {detail.currentState === 'FINALIZADO' && detail.completedAt ? <>
             <p className="mt-1 font-mono font-bold">Duración total: {formatElapsed(durationSeconds(detail.startedAt, detail.completedAt))}</p>
             <p className="text-xs text-neutral-600">Finalizó: {formatEventTime(detail.completedAt)}</p>
-          </> : <>
+          </> : detail.currentState === 'NO_COMPLETO' ? <p className="mt-1 font-bold">Finalizó el plazo sin completar. El historial parcial se conserva.</p> : <>
             <p className="mt-1 font-mono font-bold">En este estado hace: {formatElapsed(elapsedSeconds(detail.stateSince, now))}</p>
             <p className="text-xs text-neutral-600">Desde: {formatEventTime(detail.stateSince)}</p>
           </>}

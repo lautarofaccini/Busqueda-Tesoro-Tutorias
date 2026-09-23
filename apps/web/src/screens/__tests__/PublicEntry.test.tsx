@@ -12,22 +12,23 @@ describe('PublicEntry', () => {
     )
   }
 
-  it('renders the main heading', () => {
+  it('renders the main heading', async () => {
     setup()
     expect(
-      screen.getByRole('heading', { name: /búsqueda del tesoro/i })
+      await screen.findByRole('heading', { name: /búsqueda del tesoro/i })
     ).toBeInTheDocument()
   })
 
-  it('shows the QR instruction', () => {
+  it('shows the QR instruction', async () => {
     setup()
     expect(
-      screen.getByText(/buscá el QR de inicio en Tutorías/i)
+      await screen.findByText(/buscá el QR de inicio en Tutorías/i)
     ).toBeInTheDocument()
   })
 
-  it('does not show a demo badge', () => {
+  it('does not show a demo badge', async () => {
     setup()
+    await screen.findByRole('heading', { name: /búsqueda del tesoro/i })
     expect(
       screen.queryByRole('status', { name: /prototipo/i })
     ).not.toBeInTheDocument()

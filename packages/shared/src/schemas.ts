@@ -42,7 +42,7 @@ export type AnswerSubmitRequest = z.infer<typeof answerSubmitSchema>
 
 // ── Admin Event Settings ──────────────────────────────────────────────────
 export const eventSettingsSchema = z.object({
-  status: z.enum(['DRAFT', 'LIVE', 'PAUSED', 'ENDED']),
+  status: z.enum(['DRAFT', 'LIVE', 'PAUSED', 'CLOSING', 'ENDED']),
   event_name: z.string().min(1),
   points_per_correct: z.number().int().min(0),
   wrong_answer_penalty: z.number().int().min(0),

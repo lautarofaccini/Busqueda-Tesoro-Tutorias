@@ -11,6 +11,7 @@ import { GameplayRulesButton } from '../components/GameplayRulesButton'
 import { QrScannerSheet } from '../components/QrScannerSheet'
 import { Button } from '../components/Button'
 import { acknowledgeReview, isReviewAcknowledged } from '../lib/reviewAcknowledgement'
+import { ClosingGraceNotice } from '../components/ClosingGraceNotice'
 
 type ReviewNotice = { reviewId: number; text: string }
 
@@ -42,6 +43,15 @@ export function GameScreen() {
   const pendingReviewIds = useRef(new Set<number>())
   const reconciledReviewIds = useRef(new Set<number>())
   const pendingSupportIds = useRef(new Set<number>())
+  const submitPlayerSupport = async (category: 'QR_SCAN' | 'QR_DAMAGED' | 'OTHER') => {
+    const result = await submitSupport(category)
+    if ('state' in result) {
+      setGameState(result)
+      setHelpOpen(false)
+      return { success: false, message: 'El tiempo para finalizar terminó.' }
+    }
+    return result
+  }
 
   useEffect(() => {
     void getGameState()
@@ -141,7 +151,7 @@ export function GameScreen() {
     return <RecoverGameState onRetry={() => void retryGameState()} retrying={recoveringState} />
   }
 
-  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED') {
+  if (state.state === 'EVENT_PAUSED' || state.state === 'EVENT_ENDED' || state.state === 'REGISTRATION_CLOSED' || state.state === 'CLOSING_EXPIRED') {
     return <EventPausedEndedView state={state.state} />
   }
 
@@ -185,6 +195,7 @@ export function GameScreen() {
       <main className="flex-1 flex flex-col justify-between px-6 pt-6 pb-8">
         {/* Status */}
         <div>
+          <ClosingGraceNotice closing={state.closing} />
           <div className="flex items-center justify-between mb-2.5">
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-amber-100/90 border border-amber-300/80">
               <span className="w-2 h-2 rounded-xs bg-brand" aria-hidden="true" />
@@ -308,7 +319,7 @@ export function GameScreen() {
           </div>
         )}
 
-        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('OTHER'); if (result.id) pendingSupportIds.current.add(result.id); setSupportPollNonce(value => value + 1); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitSupport('QR_DAMAGED'); if (result.id) pendingSupportIds.current.add(result.id); setSupportPollNonce(value => value + 1); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
+        {helpOpen && <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-4"><div className="w-full rounded-xl bg-white p-5"><h2 className="font-bold">¿Necesitás ayuda?</h2><div className="mt-3 flex flex-col gap-2"><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpOpen(false); setHelpMessage(''); setFallbackCode(''); setFallbackOpen(true) }}>No puedo escanear el QR</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => { setHelpMessage(''); setConfirmDamagedQr(true) }}>El QR está dañado, fue quitado o no funciona</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={() => setHelpMessage('Podés pedir la revisión desde la pantalla del desafío, después de una respuesta incorrecta.')}>Mi respuesta debería ser correcta</button><button disabled={helpSubmitting} className="rounded border p-3 text-left disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitPlayerSupport('OTHER'); if (result.id) pendingSupportIds.current.add(result.id); setSupportPollNonce(value => value + 1); setHelpMessage(result.message ?? 'Avisamos al equipo de asistencia.') } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>Otro problema</button></div>{confirmDamagedQr && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Esto avisará a Tutorías que el QR está dañado, fue quitado o no funciona.</p><div className="mt-3 flex gap-2"><button disabled={helpSubmitting} className="rounded bg-brand px-3 py-2 font-bold text-white disabled:opacity-50" onClick={async () => { setHelpSubmitting(true); setHelpMessage(''); try { const result = await submitPlayerSupport('QR_DAMAGED'); if (result.id) pendingSupportIds.current.add(result.id); setSupportPollNonce(value => value + 1); setHelpMessage(result.message ?? 'Avisamos a Tutorías.'); setConfirmDamagedQr(false) } catch { setHelpMessage('No se pudo enviar el aviso. Intentá nuevamente.') } finally { setHelpSubmitting(false) } }}>{helpSubmitting ? 'Enviando…' : 'Enviar aviso'}</button><button disabled={helpSubmitting} className="rounded border px-3 py-2 font-bold disabled:opacity-50" onClick={() => setConfirmDamagedQr(false)}>Cancelar</button></div></div>}{helpMessage && <p className="mt-3 text-sm text-brand font-bold" role="status">{helpMessage}</p>}<button disabled={helpSubmitting} className="mt-4 w-full rounded border p-2 font-bold disabled:opacity-50" onClick={() => { setHelpOpen(false); setConfirmDamagedQr(false); setHelpMessage('') }}>Cerrar</button></div></div>}
 
         {/* Footer */}
         <footer className="pt-4 border-t border-border/70 flex items-center justify-between text-xs text-muted">
