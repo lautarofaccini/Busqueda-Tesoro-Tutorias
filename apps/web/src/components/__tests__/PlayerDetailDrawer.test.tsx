@@ -37,6 +37,16 @@ const detail: PlayerDetail = {
   }],
 }
 
+const completedDetail: PlayerDetail = {
+  ...detail,
+  status: 'completed',
+  currentState: 'FINALIZADO',
+  completedAt: '2026-09-23 14:00:00',
+  stateSince: '2026-09-23 14:00:00',
+  pendingReview: false,
+  currentQuestion: null,
+}
+
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-09-23T14:00:00Z'))
@@ -73,6 +83,35 @@ describe('player detail drawer', () => {
     await act(async () => { resolveFirst(new Response(JSON.stringify(detail), { status: 200 })); await first })
     expect(screen.getByText(/En este estado hace: 00:10/)).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows fixed terminal duration and Argentina completion time without polling or ticking', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(completedDetail), { status: 200 }))
+    const intervalSpy = vi.spyOn(window, 'setInterval')
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PlayerDetailDrawer sessionId={201} onClose={() => undefined} />)
+    await act(async () => {})
+    expect(screen.getByText('Duración total: 10:00')).toBeInTheDocument()
+    expect(screen.getByText('Finalizó: 11:00:00')).toBeInTheDocument()
+    expect(screen.queryByText(/En este estado hace/)).not.toBeInTheDocument()
+    expect(intervalSpy).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('performs the completion refresh and then stops future polling', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(detail), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(completedDetail), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PlayerDetailDrawer sessionId={201} onClose={() => undefined} />)
+    await act(async () => {})
+    expect(screen.getByText('RESPONDIENDO')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(screen.getByText('FINALIZADO')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

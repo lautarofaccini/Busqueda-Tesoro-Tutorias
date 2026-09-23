@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { elapsedSeconds, formatElapsed, formatEventDateTime, formatEventTime } from '../lib/eventTime'
+import { durationSeconds, elapsedSeconds, formatElapsed, formatEventDateTime, formatEventTime } from '../lib/eventTime'
 
 export type PlayerDetail = {
   id: number
@@ -62,18 +62,21 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
     let stopped = false
     let timer: number | undefined
     const poll = async () => {
+      let shouldContinue = true
       try {
         const response = await fetch(`/api/organizer/players/${sessionId}`)
         if (!response.ok) throw new Error('LOAD_FAILED')
         const next = await response.json() as PlayerDetail
+        shouldContinue = next.currentState !== 'FINALIZADO'
         if (!stopped) {
           setDetail(next)
+          setNow(Date.now())
           setError('')
         }
       } catch {
         if (!stopped) setError('No se pudo actualizar el detalle del participante.')
       } finally {
-        if (!stopped) timer = window.setTimeout(() => void poll(), 5_000)
+        if (!stopped && shouldContinue) timer = window.setTimeout(() => void poll(), 5_000)
       }
     }
     void poll()
@@ -81,9 +84,10 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
   }, [sessionId])
 
   useEffect(() => {
+    if (!detail || detail.currentState === 'FINALIZADO') return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [detail?.currentState])
 
   return <div className="fixed inset-0 z-50 bg-black/50" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section role="dialog" aria-modal="true" aria-label="Detalle del participante" className="ml-auto h-full w-full max-w-xl overflow-y-auto bg-neutral-100 p-4 shadow-2xl sm:p-6">
@@ -104,8 +108,13 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
 
         <div className="mt-4 rounded border-2 border-blue-300 bg-blue-50 p-4">
           <div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-black">{detail.currentState}</h3>{detail.pendingReview && <span className="rounded bg-amber-200 px-2 py-1 text-xs font-black text-amber-950">REVISIÓN PENDIENTE</span>}</div>
-          <p className="mt-1 font-mono font-bold">En este estado hace: {formatElapsed(elapsedSeconds(detail.stateSince, now))}</p>
-          <p className="text-xs text-neutral-600">Desde: {formatEventTime(detail.stateSince)}</p>
+          {detail.currentState === 'FINALIZADO' && detail.completedAt ? <>
+            <p className="mt-1 font-mono font-bold">Duración total: {formatElapsed(durationSeconds(detail.startedAt, detail.completedAt))}</p>
+            <p className="text-xs text-neutral-600">Finalizó: {formatEventTime(detail.completedAt)}</p>
+          </> : <>
+            <p className="mt-1 font-mono font-bold">En este estado hace: {formatElapsed(elapsedSeconds(detail.stateSince, now))}</p>
+            <p className="text-xs text-neutral-600">Desde: {formatEventTime(detail.stateSince)}</p>
+          </>}
         </div>
 
         {detail.currentState === 'RESPONDIENDO' && detail.currentQuestion && <div className="mt-4 rounded border border-orange-300 bg-orange-50 p-4">

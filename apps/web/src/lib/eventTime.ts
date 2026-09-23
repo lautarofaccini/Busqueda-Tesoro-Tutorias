@@ -29,6 +29,10 @@ export function elapsedSeconds(value: string, now = Date.now()): number {
   return Math.max(0, Math.floor((now - parsePersistedUtc(value).getTime()) / 1000))
 }
 
+export function durationSeconds(start: string, end: string): number {
+  return Math.max(0, Math.floor((parsePersistedUtc(end).getTime() - parsePersistedUtc(start).getTime()) / 1000))
+}
+
 export function formatElapsed(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds))
   const hours = Math.floor(seconds / 3600)

@@ -22,4 +22,14 @@ describe('organizer live observability', () => {
     expect(screen.getByText('Buscando el próximo QR')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/organizer/players/201')
   })
+
+  it('renders completed summary duration as fixed terminal information', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      totals: { all: 1, active: 0, completed: 1 }, active: [], invalidated: [],
+      ranking: [{ id: 301, participantId: 401, playerName: 'Ceci', identifierType: 'DNI', identifierSuffix: '123', rank: 1, isTied: false, score: 300, wrongCount: 0, hintsUsed: 0, durationSec: 577, needsReview: false }],
+    }), { status: 200 })))
+    render(<OrganizerView isEmbedded />)
+    expect(await screen.findByText('FINALIZADO · 09:37 total')).toBeInTheDocument()
+    expect(screen.queryByText(/FINALIZADO · 09:38/)).not.toBeInTheDocument()
+  })
 })

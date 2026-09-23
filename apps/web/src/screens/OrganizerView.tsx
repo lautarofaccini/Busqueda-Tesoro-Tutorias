@@ -38,9 +38,10 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   }, [])
 
   useEffect(() => {
+    if (!data?.active?.length) return
     const timer = window.setInterval(() => setNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [data?.active?.length])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -211,7 +212,7 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
                     <td className="p-3 text-right font-bold text-orange-600">{p.score}</td>
                     <td className="p-3 text-right text-red-500">{p.wrongCount}</td>
                     <td className="p-3 text-right">{p.hintsUsed}</td>
-                    <td className="p-3 text-right text-neutral-500 font-mono text-sm">{Math.floor(p.durationSec / 60)}m {p.durationSec % 60}s</td>
+                    <td className="p-3 text-right text-neutral-500 font-mono text-sm whitespace-nowrap">FINALIZADO · {formatElapsed(p.durationSec)} total</td>
                     <td className="p-3 text-right">
                       <button onClick={() => setSelectedSessionId(p.id)} className="mr-2 text-xs bg-blue-100 text-blue-800 hover:bg-blue-200 px-2 py-1 rounded">Ver detalle</button>
                       {p.invalidatedAt ? (
