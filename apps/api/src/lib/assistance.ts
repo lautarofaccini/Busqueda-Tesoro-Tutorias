@@ -1,4 +1,5 @@
 import { advanceStep, completeSession, getSessionTotalSteps } from '../db/queries.js'
+import { parsePersistedUtc } from './timestamps.js'
 
 export type AssistanceDecision = { approve: boolean; addAlias?: boolean | undefined; note?: string | undefined }
 
@@ -35,7 +36,7 @@ export async function getAssistanceFeed(db: D1Database) {
     })),
   ].sort((left, right) => {
     if (left.actionable !== right.actionable) return left.actionable ? -1 : 1
-    const byDate = new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    const byDate = parsePersistedUtc(right.created_at) - parsePersistedUtc(left.created_at)
     return byDate || Number(right.id) - Number(left.id)
   })
 

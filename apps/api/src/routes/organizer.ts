@@ -3,9 +3,11 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Env } from '../env.d'
-import { getOrganizerResults } from '../db/queries.js'
+import { getOrganizerPlayerDetail, getOrganizerResults, getOrganizerStateSince } from '../db/queries.js'
 import { calculateScore } from '../lib/scoring.js'
 import { timingSafeSecretEqual, verifyTotp } from '../lib/totp.js'
+import { deriveOperationalPlayerState } from '../lib/game-state.js'
+import { parsePersistedUtc } from '../lib/timestamps.js'
 
 
 export const organizerRoutes = new Hono<{ Bindings: Env }>()
@@ -60,9 +62,28 @@ organizerRoutes.post('/logout', async (c) => {
   return c.json({ success: true })
 })
 
+async function hasOrganizerSession(c: any) {
+  return await getSignedCookie(c, c.env.ORGANIZER_SECRET, AUTH_COOKIE) === 'authenticated'
+}
+
+organizerRoutes.get('/players/:sessionId', async (c) => {
+  if (!await hasOrganizerSession(c)) return c.json({ error: 'UNAUTHORIZED' }, 401)
+  const sessionId = Number(c.req.param('sessionId'))
+  if (!Number.isInteger(sessionId) || sessionId <= 0) return c.json({ error: 'INVALID_SESSION_ID' }, 400)
+  const detail = await getOrganizerPlayerDetail(c.env.DB, sessionId)
+  if (!detail) return c.json({ error: 'NOT_FOUND' }, 404)
+  return c.json({
+    ...detail,
+    currentState: deriveOperationalPlayerState({
+      status: detail.status,
+      current_step: detail.currentStep,
+      unlocked_step: detail.unlockedStep,
+    }),
+  })
+})
+
 organizerRoutes.get('/results', async (c) => {
-  const auth = await getSignedCookie(c, c.env.ORGANIZER_SECRET, AUTH_COOKIE)
-  if (auth !== 'authenticated') {
+  if (!await hasOrganizerSession(c)) {
     return c.json({ error: 'UNAUTHORIZED' }, 401)
   }
 
@@ -70,7 +91,7 @@ organizerRoutes.get('/results', async (c) => {
   let activeSessions = 0
   let completedSessions = 0
 
-  const players = rawResults.map((r: any) => {
+  const players = await Promise.all(rawResults.map(async (r: any) => {
     // If invalidated, we don't count it towards competitive totals in the same way, but let's include it for the admin UI to see.
     if (!r.invalidatedAt) {
       if (r.status === 'completed') completedSessions++
@@ -84,8 +105,8 @@ organizerRoutes.get('/results', async (c) => {
     
     if (r.status === 'completed' && r.completedAt) {
       score = calculateScore(r.correctCount, r.wrongCount, r.hintsUsed)
-      const start = new Date(r.startedAt).getTime()
-      const end = new Date(r.completedAt).getTime()
+      const start = parsePersistedUtc(r.startedAt)
+      const end = parsePersistedUtc(r.completedAt)
       durationSec = Math.floor((end - start) / 1000)
       
       if (durationSec < 300) {
@@ -93,12 +114,26 @@ organizerRoutes.get('/results', async (c) => {
       }
     }
 
+    const stateSince = await getOrganizerStateSince(c.env.DB, {
+      id: Number(r.id),
+      playerName: r.playerName,
+      career: r.career,
+      identifierType: r.identifierType,
+      identifierSuffix: r.identifierSuffix,
+      status: r.status,
+      currentStep: Number(r.currentStep),
+      unlockedStep: r.unlockedStep === null ? null : Number(r.unlockedStep),
+      startedAt: r.startedAt,
+      completedAt: r.completedAt,
+      totalSteps: Number(r.totalSteps),
+    })
     return {
       id: r.id, // Session ID
       participantId: r.participantId,
       playerName: r.playerName,
       identifierType: r.identifierType,
       identifierSuffix: r.identifierSuffix,
+      career: r.career,
       invalidatedAt: r.invalidatedAt,
       status: r.status,
       currentStep: r.currentStep,
@@ -110,9 +145,12 @@ organizerRoutes.get('/results', async (c) => {
       hintsUsed: r.hintsUsed,
       score,
       durationSec,
-      needsReview
+      needsReview,
+      currentState: deriveOperationalPlayerState({ status: r.status, current_step: Number(r.currentStep), unlocked_step: r.unlockedStep === null ? null : Number(r.unlockedStep) }),
+      stateSince: stateSince.value,
+      pendingReview: Boolean(r.pendingReview),
     }
-  })
+  }))
 
   // Ranking:
   // 1. Sort by score descending
@@ -146,7 +184,7 @@ organizerRoutes.get('/results', async (c) => {
   const active = players.filter(p => p.status !== 'completed' && !p.invalidatedAt)
   const invalidated = players.filter(p => p.invalidatedAt)
   // Display ordering purely, no rank
-  active.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+  active.sort((a, b) => parsePersistedUtc(b.startedAt) - parsePersistedUtc(a.startedAt))
 
   return c.json({
     totals: {

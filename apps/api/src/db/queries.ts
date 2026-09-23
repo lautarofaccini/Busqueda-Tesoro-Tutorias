@@ -419,21 +419,151 @@ export async function getOrganizerResults(db: D1Database) {
       p.display_name as playerName,
       p.identifier_type as identifierType,
       p.identifier_suffix as identifierSuffix,
+      p.career as career,
       p.invalidated_at as invalidatedAt,
+      p.invalidation_reason as invalidationReason,
       s.status, 
       s.current_step as currentStep,
+      s.unlocked_step as unlockedStep,
       s.started_at as startedAt, 
       s.completed_at as completedAt,
       (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
       IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount,
-      (SELECT COUNT(*) FROM question_hint_usage h WHERE h.session_id = s.id) as hintsUsed
+      (SELECT COUNT(*) FROM question_hint_usage h WHERE h.session_id = s.id) as hintsUsed,
+      EXISTS(SELECT 1 FROM answer_review_requests r WHERE r.session_id = s.id AND r.status = 'PENDING') as pendingReview
     FROM sessions s
     JOIN participants p ON s.participant_id = p.id
     LEFT JOIN answer_attempts a ON s.id = a.session_id
     GROUP BY s.id
   `).all()
   return result.results
+}
+
+export type OrganizerSessionSnapshot = {
+  id: number
+  playerName: string
+  career: string | null
+  identifierType: string
+  identifierSuffix: string
+  status: string
+  currentStep: number
+  unlockedStep: number | null
+  startedAt: string
+  completedAt: string | null
+  totalSteps: number
+}
+
+/**
+ * Derive the most recent authoritative transition using existing audit rows.
+ * It never writes and deliberately ignores rescans, which do not change state.
+ */
+export async function getOrganizerStateSince(db: D1Database, session: OrganizerSessionSnapshot): Promise<{ value: string; source: string }> {
+  if (session.status === 'completed' && session.completedAt) return { value: session.completedAt, source: 'SESSION_COMPLETED_AT' }
+
+  if (session.unlockedStep === session.currentStep) {
+    if (session.currentStep === 0) return { value: session.startedAt, source: 'SESSION_STARTED_AT' }
+    const scan = await db.prepare(`
+      SELECT MAX(se.scanned_at) AS changedAt
+      FROM scan_events se
+      JOIN session_steps ss ON ss.session_id = se.session_id AND ss.position = ? AND ss.checkpoint_id = se.checkpoint_id
+      WHERE se.session_id = ? AND se.outcome IN ('CHALLENGE', 'FALLBACK_CODE_CHALLENGE')
+    `).bind(session.currentStep, session.id).first<{ changedAt: string | null }>()
+    if (scan?.changedAt) return { value: scan.changedAt, source: 'CHECKPOINT_UNLOCK_SCAN' }
+    const assignment = await db.prepare('SELECT assigned_at AS changedAt FROM session_challenge_assignments WHERE session_id = ? AND route_step = ?')
+      .bind(session.id, session.currentStep).first<{ changedAt: string | null }>()
+    return { value: assignment?.changedAt ?? session.startedAt, source: assignment?.changedAt ? 'QUESTION_ASSIGNMENT_FALLBACK' : 'SESSION_START_FALLBACK' }
+  }
+
+  const transition = await db.prepare(`
+    SELECT MAX(changedAt) AS changedAt FROM (
+      SELECT a.attempted_at AS changedAt
+      FROM answer_attempts a
+      JOIN session_challenge_assignments sca ON sca.session_id = a.session_id AND sca.challenge_id = a.challenge_id
+      WHERE a.session_id = ? AND sca.route_step = ? AND a.correct = 1
+      UNION ALL
+      SELECT r.resolved_at AS changedAt
+      FROM answer_review_requests r
+      JOIN session_challenge_assignments sca ON sca.session_id = r.session_id AND sca.challenge_id = r.challenge_id
+      WHERE r.session_id = ? AND sca.route_step = ? AND r.status = 'APPROVED' AND r.awarded_correct = 1
+    )
+  `).bind(session.id, session.currentStep - 1, session.id, session.currentStep - 1).first<{ changedAt: string | null }>()
+  return { value: transition?.changedAt ?? session.startedAt, source: transition?.changedAt ? 'SUCCESSFUL_ADVANCE' : 'SESSION_START_FALLBACK' }
+}
+
+export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number) {
+  const session = await db.prepare(`
+    SELECT s.id, s.player_name AS playerName, p.career, p.identifier_type AS identifierType,
+      p.identifier_suffix AS identifierSuffix, s.status, s.current_step AS currentStep,
+      s.unlocked_step AS unlockedStep, s.started_at AS startedAt, s.completed_at AS completedAt,
+      (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) AS totalSteps
+    FROM sessions s JOIN participants p ON p.id = s.participant_id WHERE s.id = ?
+  `).bind(sessionId).first<OrganizerSessionSnapshot>()
+  if (!session) return null
+
+  const [settings, score, pendingReview, current, destination, assignments, attempts, navigationHints] = await Promise.all([
+    db.prepare('SELECT points_per_correct, wrong_answer_penalty, hint_penalty FROM event_settings WHERE id = 1').first<any>(),
+    getSessionScore(db, sessionId),
+    db.prepare("SELECT COUNT(*) AS count FROM answer_review_requests WHERE session_id = ? AND status = 'PENDING'").bind(sessionId).first<{ count: number }>(),
+    db.prepare(`SELECT cp.label AS checkpoint, ch.question_text AS question, sca.assigned_at AS assignedAt,
+      qhu.used_at AS hintUsedAt
+      FROM session_challenge_assignments sca
+      JOIN challenges ch ON ch.id = sca.challenge_id JOIN checkpoints cp ON cp.id = ch.checkpoint_id
+      LEFT JOIN question_hint_usage qhu ON qhu.session_id = sca.session_id AND qhu.challenge_id = sca.challenge_id
+      WHERE sca.session_id = ? AND sca.route_step = ?`).bind(sessionId, session.currentStep).first<any>(),
+    db.prepare(`SELECT cp.label AS checkpoint, cp.primary_clue AS clue
+      FROM session_steps ss JOIN checkpoints cp ON cp.id = ss.checkpoint_id
+      WHERE ss.session_id = ? AND ss.position = ?`).bind(sessionId, session.currentStep).first<any>(),
+    db.prepare(`SELECT sca.route_step AS stepPosition, cp.label AS checkpoint, ch.question_text AS question,
+      sca.assigned_at AS assignedAt, qhu.used_at AS hintUsedAt
+      FROM session_challenge_assignments sca
+      JOIN challenges ch ON ch.id = sca.challenge_id JOIN checkpoints cp ON cp.id = ch.checkpoint_id
+      LEFT JOIN question_hint_usage qhu ON qhu.session_id = sca.session_id AND qhu.challenge_id = sca.challenge_id
+      WHERE sca.session_id = ? ORDER BY sca.route_step`).bind(sessionId).all<any>(),
+    db.prepare(`SELECT a.id, sca.route_step AS stepPosition, a.raw_answer AS answer, a.correct,
+      a.attempted_at AS attemptedAt, r.status AS reviewStatus, r.created_at AS reviewRequestedAt,
+      r.resolved_at AS reviewResolvedAt, r.awarded_correct AS awardedCorrect,
+      r.reversed_wrong AS reversedWrong
+      FROM answer_attempts a
+      LEFT JOIN session_challenge_assignments sca ON sca.session_id = a.session_id AND sca.challenge_id = a.challenge_id
+      LEFT JOIN answer_review_requests r ON r.answer_attempt_id = a.id
+      WHERE a.session_id = ? ORDER BY a.attempted_at, a.id`).bind(sessionId).all<any>(),
+    db.prepare('SELECT step_position AS stepPosition, used_at AS usedAt FROM hint_usage WHERE session_id = ? ORDER BY step_position').bind(sessionId).all<any>(),
+  ])
+  const stateSince = await getOrganizerStateSince(db, session)
+  const attemptsByStep = new Map<number, any[]>()
+  for (const attempt of attempts.results ?? []) {
+    const step = Number(attempt.stepPosition)
+    const list = attemptsByStep.get(step) ?? []
+    const baseEffect = Number(attempt.correct) === 1 ? Number(settings?.points_per_correct ?? 100) : -Number(settings?.wrong_answer_penalty ?? 10)
+    const reviewCorrection = attempt.reviewStatus === 'APPROVED'
+      ? Number(attempt.awardedCorrect ?? 0) * Number(settings?.points_per_correct ?? 100) + Number(attempt.reversedWrong ?? 0) * Number(settings?.wrong_answer_penalty ?? 10)
+      : 0
+    list.push({ ...attempt, correct: Number(attempt.correct) === 1, scoreEffect: baseEffect, reviewCorrection })
+    attemptsByStep.set(step, list)
+  }
+
+  const routeHintByStep = new Map((navigationHints.results ?? []).map((hint: any) => [Number(hint.stepPosition), hint.usedAt]))
+  const history = (assignments.results ?? []).map((assignment: any) => ({
+    ...assignment,
+    stepPosition: Number(assignment.stepPosition),
+    routeHintUsedAt: routeHintByStep.get(Number(assignment.stepPosition)) ?? null,
+    attempts: attemptsByStep.get(Number(assignment.stepPosition)) ?? [],
+  }))
+
+  return {
+    ...session,
+    score,
+    errors: history.flatMap((item: any) => item.attempts).filter((attempt: any) => !attempt.correct).length,
+    questionHints: history.filter((item: any) => item.hintUsedAt).length,
+    navigationHints: navigationHints.results?.length ?? 0,
+    pendingReview: Number(pendingReview?.count ?? 0) > 0,
+    stateSince: stateSince.value,
+    stateSinceSource: stateSince.source,
+    currentQuestion: current ?? null,
+    destination: destination ?? null,
+    history,
+  }
 }
 
 /** Create or get a participant. */

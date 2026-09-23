@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { formatEventDateTime, parsePersistedUtc } from '../lib/eventTime'
 
 type FeedItem = {
   id: number
@@ -206,7 +207,7 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
       setFeed(current => current ? {
         pendingCount: Math.max(0, current.pendingCount - (item.actionable ? 1 : 0)),
         items: current.items.map(candidate => candidate.kind === item.kind && candidate.id === item.id ? { ...candidate, status: terminalStatus, actionable: false } : candidate)
-          .sort((left, right) => Number(right.actionable) - Number(left.actionable) || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()),
+          .sort((left, right) => Number(right.actionable) - Number(left.actionable) || parsePersistedUtc(right.created_at).getTime() - parsePersistedUtc(left.created_at).getTime()),
       } : current)
       setMessage(item.kind === 'ANSWER_REVIEW' ? (body.approve ? 'Respuesta aprobada.' : 'Respuesta rechazada.') : 'Aviso resuelto.')
     } catch {
@@ -241,7 +242,7 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
           {item.kind === 'SUPPORT' ? <>
             <h2 className="break-words text-base font-black">{item.category === 'QR_DAMAGED' ? `QR ROTO O EXTRAVIADO EN ${(item.label ?? 'ESTACIÓN').toUpperCase()}` : item.category === 'QR_SCAN' ? `PROBLEMA PARA ESCANEAR EN ${(item.label ?? 'ESTACIÓN').toUpperCase()}` : 'OTRO PEDIDO DE AYUDA'}</h2>
             <p className="mt-1 break-words text-sm">Participante: <strong>{item.display_name}</strong></p>
-            <p className="text-xs text-neutral-600">{new Date(item.created_at).toLocaleString('es-AR')} · {item.status} · Sesión {item.session_id}</p>
+            <p className="text-xs text-neutral-600">{formatEventDateTime(item.created_at)} · {item.status} · Sesión {item.session_id}</p>
             {item.note && <p className="mt-2 break-words text-sm">{item.note}</p>}
             {item.actionable && <button disabled={busy} className="mt-3 w-full rounded border px-3 py-2 font-bold hover:bg-neutral-100 active:scale-[.99] disabled:opacity-50 sm:w-auto" onClick={() => void resolve(item, {})}>{busy ? 'Resolviendo…' : 'Resolver'}</button>}
           </> : <>
@@ -251,7 +252,7 @@ export function AssistancePanel({ basePath, allowAlias = false }: { basePath: '/
             <p className="mt-2 break-words rounded bg-amber-50 p-2 text-sm"><strong>Respuesta enviada:</strong> {item.raw_answer}</p>
             <p className="mt-2 break-words text-sm"><strong>Respuesta canónica:</strong> {item.canonical_answer}</p>
             <p className="break-words text-sm"><strong>Alias aceptados:</strong> {item.accepted_aliases?.length ? item.accepted_aliases.join(' · ') : 'Sin alias'}</p>
-            <p className="mt-2 text-xs text-neutral-600">{new Date(item.created_at).toLocaleString('es-AR')} · {item.status} · Puntaje al solicitar: {item.score_at_request} · Sesión {item.session_id}</p>
+            <p className="mt-2 text-xs text-neutral-600">{formatEventDateTime(item.created_at)} · {item.status} · Puntaje al solicitar: {item.score_at_request} · Sesión {item.session_id}</p>
             {item.actionable && <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={busy} className="rounded bg-green-700 px-3 py-2 font-bold text-white hover:bg-green-800 active:scale-[.99] disabled:opacity-50" onClick={() => void resolve(item, { approve: true })}>{busy ? 'Procesando…' : 'Aprobar'}</button><button disabled={busy} className="rounded bg-red-700 px-3 py-2 font-bold text-white hover:bg-red-800 active:scale-[.99] disabled:opacity-50" onClick={() => void resolve(item, { approve: false })}>{busy ? 'Procesando…' : 'Rechazar'}</button>{allowAlias && <button disabled={busy} className="col-span-2 rounded border px-3 py-2 text-sm font-bold hover:bg-neutral-100 disabled:opacity-50" onClick={() => void resolve(item, { approve: true, addAlias: true })}>Aprobar y agregar como alias</button>}</div>}
           </>}
         </article>

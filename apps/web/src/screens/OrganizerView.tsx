@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { PlayerDetailDrawer } from '../components/PlayerDetailDrawer'
+import { elapsedSeconds, formatElapsed, formatEventTime } from '../lib/eventTime'
 
 export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   const [passphrase, setPassphrase] = useState('')
@@ -10,6 +12,8 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
   const [participantToInvalidate, setParticipantToInvalidate] = useState<number | null>(null)
   const [invalidationReason, setInvalidationReason] = useState('')
   const [participantToRelease, setParticipantToRelease] = useState<number | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
+  const [now, setNow] = useState(Date.now())
 
   const fetchResults = async () => {
     setLoading(true)
@@ -31,6 +35,11 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
 
   useEffect(() => {
     fetchResults()
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -204,6 +213,7 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
                     <td className="p-3 text-right">{p.hintsUsed}</td>
                     <td className="p-3 text-right text-neutral-500 font-mono text-sm">{Math.floor(p.durationSec / 60)}m {p.durationSec % 60}s</td>
                     <td className="p-3 text-right">
+                      <button onClick={() => setSelectedSessionId(p.id)} className="mr-2 text-xs bg-blue-100 text-blue-800 hover:bg-blue-200 px-2 py-1 rounded">Ver detalle</button>
                       {p.invalidatedAt ? (
                         <button onClick={() => setParticipantToRelease(p.participantId)} className="text-xs bg-neutral-200 hover:bg-neutral-300 px-2 py-1 rounded">Rehabilitar</button>
                       ) : (
@@ -229,13 +239,15 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
               <tr className="bg-neutral-50 border-b border-neutral-200">
                 <th className="p-3 font-semibold">Equipo/Jugador</th>
                 <th className="p-3 font-semibold text-center">Progreso</th>
+                <th className="p-3 font-semibold">Estado</th>
                 <th className="p-3 font-semibold text-right">Errores</th>
                 <th className="p-3 font-semibold text-right">Inicio</th>
+                <th className="p-3 font-semibold text-right">Acción</th>
               </tr>
             </thead>
             <tbody>
               {data?.active.length === 0 ? (
-                <tr><td colSpan={4} className="p-4 text-center text-neutral-500">No hay sesiones activas</td></tr>
+                <tr><td colSpan={6} className="p-4 text-center text-neutral-500">No hay sesiones activas</td></tr>
               ) : (
                 data?.active.map((p: any) => (
                   <tr key={p.id} className="border-b border-neutral-100">
@@ -243,14 +255,20 @@ export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
                     <td className="p-3 text-center">
                       <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">Paso {Math.min(p.currentStep, p.totalSteps)} / {p.totalSteps}</span>
                     </td>
+                    <td className="p-3 text-xs font-bold whitespace-nowrap">
+                      {p.currentState} · <span className="font-mono">{formatElapsed(elapsedSeconds(p.stateSince, now))}</span>
+                      {p.pendingReview && <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">REVISIÓN</span>}
+                    </td>
                     <td className="p-3 text-right text-red-500">{p.wrongCount}</td>
-                    <td className="p-3 text-right text-neutral-500 text-sm">{new Date(p.startedAt).toLocaleTimeString()}</td>
+                    <td className="p-3 text-right text-neutral-500 text-sm whitespace-nowrap">{formatEventTime(p.startedAt)}</td>
+                    <td className="p-3 text-right"><button type="button" className="rounded bg-blue-100 px-2 py-1 text-xs font-bold text-blue-800 hover:bg-blue-200" onClick={() => setSelectedSessionId(p.id)}>Ver detalle</button></td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        {selectedSessionId !== null && <PlayerDetailDrawer sessionId={selectedSessionId} onClose={() => setSelectedSessionId(null)} />}
       </div>
     </div>
   )

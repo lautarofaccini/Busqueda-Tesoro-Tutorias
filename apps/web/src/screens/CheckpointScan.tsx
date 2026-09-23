@@ -11,6 +11,7 @@ import { ScoreDisplay } from '../components/ScoreDisplay'
 import { EventPausedEndedView } from '../components/EventPausedEndedView'
 import { GameplayRulesButton } from '../components/GameplayRulesButton'
 import { acknowledgeReview, isReviewAcknowledged } from '../lib/reviewAcknowledgement'
+import { parsePersistedUtc } from '../lib/eventTime'
 
 /**
  * CheckpointScan — production screen for /q/:token.
@@ -484,7 +485,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
   }
 
   const pending = review?.status === 'PENDING'
-  const oldPending = pending && Date.now() - new Date(review.created_at).getTime() >= 300_000
+  const oldPending = pending && Date.now() - parsePersistedUtc(review.created_at).getTime() >= 300_000
   return <MobileShell>
     <BrandHeader rightElement={<GameplayRulesButton />} />
     <main className="flex-1 px-6 pt-7 pb-8">

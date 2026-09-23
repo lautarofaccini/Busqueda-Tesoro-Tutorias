@@ -23,6 +23,15 @@ import {
   hasUsedQuestionHint,
   getSessionScore,
 } from '../db/queries.js'
+import { parsePersistedUtc } from './timestamps.js'
+
+export type OperationalPlayerState = 'RESPONDIENDO' | 'BUSCANDO_QR' | 'FINALIZADO'
+
+/** Mirrors the authoritative player state machine without creating a second model. */
+export function deriveOperationalPlayerState(session: Pick<SessionRow, 'status' | 'current_step' | 'unlocked_step'>): OperationalPlayerState {
+  if (session.status === 'completed') return 'FINALIZADO'
+  return session.unlocked_step === session.current_step ? 'RESPONDIENDO' : 'BUSCANDO_QR'
+}
 
 export async function buildGameState(
   db: D1Database,
@@ -76,7 +85,7 @@ export async function buildGameState(
     let cooldownRemaining = 0;
     const lastAttempt = await db.prepare('SELECT correct, attempted_at FROM answer_attempts WHERE session_id = ? AND challenge_id = ? ORDER BY id DESC LIMIT 1').bind(session.id, challenge.id).first();
     if (lastAttempt && lastAttempt.correct === 0) {
-      const msSince = Date.now() - new Date(lastAttempt.attempted_at as string).getTime();
+      const msSince = Date.now() - parsePersistedUtc(lastAttempt.attempted_at as string);
       if (msSince < 10000) {
         cooldownRemaining = Math.ceil((10000 - msSince) / 1000);
       }

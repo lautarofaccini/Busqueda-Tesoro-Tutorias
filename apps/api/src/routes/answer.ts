@@ -38,6 +38,7 @@ import {
 } from '../db/queries.js'
 import { getSessionToken, buildSessionCookie } from '../lib/cookies.js'
 import { buildGameState } from '../lib/game-state.js'
+import { parsePersistedUtc } from '../lib/timestamps.js'
 
 const answerRoutes = new Hono<{ Bindings: Env }>()
 
@@ -90,7 +91,7 @@ answerRoutes.post(
     // Cooldown logic
     const lastAttempt = await c.env.DB.prepare('SELECT correct, attempted_at FROM answer_attempts WHERE session_id = ? AND challenge_id = ? ORDER BY id DESC LIMIT 1').bind(session.id, challengeId).first();
     if (lastAttempt && lastAttempt.correct === 0) {
-      const msSince = Date.now() - new Date(lastAttempt.attempted_at as string).getTime();
+      const msSince = Date.now() - parsePersistedUtc(lastAttempt.attempted_at as string);
       if (msSince < 10000) {
         return c.json({ error: 'COOLDOWN_ACTIVE', remainingSeconds: Math.ceil((10000 - msSince) / 1000) }, 429)
       }

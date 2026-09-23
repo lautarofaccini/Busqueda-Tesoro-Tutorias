@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { assistanceRoutes, isAssistanceLoginRateLimited } from '../routes/assistance.js'
 import { adminRoutes } from '../routes/admin.js'
+import { organizerRoutes } from '../routes/organizer.js'
 
 const env = {
   ASSISTANCE_USERNAME: 'tutor',
@@ -47,5 +48,6 @@ describe('limited assistance authentication', () => {
       new Request('https://example.test/checkpoints/1/token', { method: 'POST', headers: { cookie } }),
       new Request('https://example.test/challenges/1', { method: 'PUT', headers: { cookie, 'Content-Type': 'application/json' }, body: '{}' }),
     ]) expect((await adminRoutes.fetch(request, env)).status).toBe(401)
+    expect((await organizerRoutes.fetch(new Request('https://example.test/players/1', { headers: { cookie } }), env)).status).toBe(401)
   })
 })

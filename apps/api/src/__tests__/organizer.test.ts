@@ -29,7 +29,8 @@ function applyMigrationsAndSeed() {
     'migrations/0008_production_scoring_and_review.sql',
     'migrations/0009_player_support_manual_review.sql',
     'migrations/0010_remove_session_route_dependency.sql',
-    'seed/test_seed.sql'
+    'seed/test_seed.sql',
+    'seed/organizer_observability_test.sql'
   ]
 
   for (const file of migrations) {
@@ -81,8 +82,46 @@ describe('Organizer API', () => {
     })
     expect(res.status).toBe(200)
     const data = await res.json() as any
-    expect(data.totals).toEqual({ all: 0, active: 0, completed: 0 })
-    expect(data.ranking).toEqual([])
+    expect(data.totals).toEqual({ all: 3, active: 2, completed: 1 })
+    expect(data.ranking).toHaveLength(1)
+    expect(data.active.map((player: any) => player.currentState).sort()).toEqual(['BUSCANDO_QR', 'RESPONDIENDO'])
+  })
+
+  it('returns read-only server-authoritative player detail for active and completed sessions', async () => {
+    const loginRes = await worker.fetch('/api/organizer/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
+    })
+    const cookie = loginRes.headers.get('set-cookie')!.split(';')[0]!
+
+    const answering = await (await worker.fetch('/api/organizer/players/201', { headers: { cookie } })).json() as any
+    expect(answering).toMatchObject({ currentState: 'RESPONDIENDO', pendingReview: true, stateSince: '2026-09-23 14:02:00', stateSinceSource: 'CHECKPOINT_UNLOCK_SCAN' })
+    expect(answering.currentQuestion).toMatchObject({ checkpoint: '[DEMO] Checkpoint A', question: '[DEMO] Ingres� la palabra naranja.' })
+    expect(answering.history.find((item: any) => item.stepPosition === 1).attempts).toMatchObject([
+      { answer: 'rojo', correct: false, reviewStatus: 'REJECTED' },
+      { answer: 'azul', correct: false, reviewStatus: 'PENDING' },
+    ])
+    expect(answering.questionHints).toBe(1)
+
+    const looking = await (await worker.fetch('/api/organizer/players/202', { headers: { cookie } })).json() as any
+    expect(looking).toMatchObject({ currentState: 'BUSCANDO_QR', stateSince: '2026-09-23 14:05:00', stateSinceSource: 'SUCCESSFUL_ADVANCE' })
+    expect(looking.destination).toMatchObject({ checkpoint: '[DEMO] Checkpoint A' })
+
+    const completed = await (await worker.fetch('/api/organizer/players/203', { headers: { cookie } })).json() as any
+    expect(completed).toMatchObject({ currentState: 'FINALIZADO', stateSince: '2026-09-23 14:10:00' })
+    expect(completed.history.flatMap((item: any) => item.attempts).find((attempt: any) => attempt.answer === 'treinta')).toMatchObject({ reviewStatus: 'APPROVED', reviewCorrection: 10 })
+  })
+
+  it('requires organizer auth and repeated polling does not mutate session data', async () => {
+    expect((await worker.fetch('/api/organizer/players/201')).status).toBe(401)
+    const loginRes = await worker.fetch('/api/organizer/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
+    })
+    const cookie = loginRes.headers.get('set-cookie')!.split(';')[0]!
+    const first = await (await worker.fetch('/api/organizer/players/201', { headers: { cookie } })).json()
+    const second = await (await worker.fetch('/api/organizer/players/201', { headers: { cookie } })).json()
+    expect(second).toEqual(first)
   })
 
   it('admin routes accept the same organizer auth cookie', async () => {
