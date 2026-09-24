@@ -2,27 +2,21 @@
 
 This repository is prepared for one same-origin Worker serving static React assets and `/api/*`. Do not run local reset commands against a remote database.
 
-For the final event hotfix after production content is loaded, do not rerun migrations or content import. Configure any newly required secrets, then release only with `npm run build` followed by `cd apps/api` and `npx wrangler deploy --env production`.
+Production contains irreplaceable event history. Never run reset, seed, content import or destructive SQL against it. Migration 0011 and the dependent Worker require a separate explicit approval; the steps below are a manual runbook, not authorization to execute them.
 
-1. `cd apps/api` then `npx wrangler login` and `npx wrangler whoami`.
-2. Create the database: `npx wrangler d1 create busqueda-tesoro-tutorias-prod`.
-3. Paste its returned ID into `apps/api/wrangler.toml` under `env.production.d1_databases`.
-4. Confirm `[env.production.vars]` remains `ENVIRONMENT = "production"`.
-5. Enroll a local authenticator before deploying the security hotfix: from the repository root run `npm run admin:totp:setup`, scan `.local-totp/organizer-totp-enrollment.png` with Authy (or another RFC 6238 app), then delete `.local-totp/` after confirming it. Set the independent secrets interactively: `npx wrangler secret put ORGANIZER_SECRET --env production`, `npx wrangler secret put ORGANIZER_TOTP_SECRET --env production`, `npx wrangler secret put PARTICIPANT_ID_SECRET --env production`, `npx wrangler secret put ASSISTANCE_USERNAME --env production`, and `npx wrangler secret put ASSISTANCE_PASSWORD --env production`. Never add secrets to this repository or `wrangler.toml`.
-6. From repository root, run `npm run build`.
-7. Apply migrations: `cd apps/api && npx wrangler d1 migrations apply busqueda-tesoro-tutorias-prod --remote --env production`.
-8. Import content once, without reset: `cd ../.. && npm run content:import:remote`. It requires the explicit remote flag internally, preserves DRAFT, and leaves needs-review questions inactive.
-9. Deploy Worker and static assets: `npm run deploy:production -w apps/api`.
-10. Record the displayed `workers.dev` URL. Verify `/`, `/admin`, `/q/<token>`, and `/api/health` are same-origin.
-11. Confirm the event is DRAFT, log in as organizer, and run production smoke tests.
-12. Use the organizer reset action after smoke testing; leave the event in DRAFT.
-13. Review every `REVISAR` question, correct/approve it, then explicitly activate approved questions.
-14. Export final QR files only after deployment, using the public Worker URL. Do not print local/LAN QR URLs.
-15. On event day, an organizer manually changes the event to LIVE.
+1. From `apps/api`, run `npx wrangler login` and `npx wrangler whoami`. Confirm `wrangler.toml` still targets Worker `tesoro`, D1 `busqueda-tesoro-tutorias-prod`, and its already configured production UUID. Do not create or replace the database.
+2. Verify a D1 Time Travel recovery point or equivalent backup before any schema change. Record pre-migration counts for `participants`, `sessions`, `answer_attempts`, `scan_events`, `session_challenge_assignments`, `hint_usage`, `question_hint_usage`, `answer_review_requests`, and `support_requests` without printing personal data.
+3. Configure secrets interactively from `apps/api`: run `npx wrangler secret put ADMIN_USERNAME --env production` and enter `adminTutores21`; run `npx wrangler secret put ADMIN_PASSWORD --env production` and enter a new strong secret password; then verify the existing `ORGANIZER_SECRET` remains configured. Do not reuse the username as the password. Preserve `PARTICIPANT_ID_SECRET`, `ASSISTANCE_USERNAME`, and `ASSISTANCE_PASSWORD`; never print or commit their values.
+4. From the repository root, check out the exact validated commit and run `npm run typecheck`, `npm run build`, and the documented tests. Run `cd apps/api` then `npx wrangler deploy --dry-run --env production`.
+5. With separate migration approval, apply exactly `migrations/0011_event_runs.sql` through Wrangler migrations: `cd apps/api` then `npx wrangler d1 migrations apply busqueda-tesoro-tutorias-prod --remote --env production`. Do not run seed/import/reset commands.
+6. Immediately repeat the read-only row counts. Confirm every existing session has an Edition 1 reference, foreign-key checks are clean, history counts match, and the new adjustment ledger is empty.
+7. Only after those checks pass, deploy Worker and static assets from the same commit: from `apps/api`, run `npx wrangler deploy --env production`.
+8. Verify `https://tesoro.tutorias-frre.workers.dev/api/health`, load `/admin`, log in with username/password, and read Edition 1 totals/detail/ranking. Do not create an edition or correction during this smoke test.
+9. If application verification fails but the additive migration is healthy, redeploy the prior known-good Worker while preserving D1. If migration verification shows data loss or broken references, stop writes and use the recorded Time Travel/backup recovery procedure; do not improvise destructive SQL.
 
 ## Organizer access and LIVE safety
 
-Organizer access requires the password secret plus an RFC 6238 TOTP code (six digits, 30 seconds). The production Worker has a dedicated rate-limit binding (`ADMIN_LOGIN_LIMITER`, 10 attempts per minute per source address); its account-local `namespace_id` in `wrangler.toml` must remain unique within the Cloudflare account.
+Organizer access requires the `ADMIN_USERNAME` and `ADMIN_PASSWORD` secrets. `ORGANIZER_SECRET` signs the session cookie and must remain independent. The production Worker has a dedicated rate-limit binding (`ADMIN_LOGIN_LIMITER`, 10 attempts per minute per source address); its account-local `namespace_id` in `wrangler.toml` must remain unique within the Cloudflare account. Cookies are HttpOnly, SameSite=Strict, Secure in production and expire after four hours.
 
 The limited `/asistencia` panel uses its own `ASSISTANCE_USERNAME` and `ASSISTANCE_PASSWORD` secrets and a separate four-hour cookie. That role can only read and resolve assistance/review records; its cookie is not accepted by organizer routes.
 
@@ -30,7 +24,7 @@ Changing the event to LIVE is refused by the API until there is an active START 
 
 ## Hotfix / rollback
 
-Build and deploy the intended commit with the same `--env production`. Database migrations are additive; do not use local reset tooling or delete production content. If a release is faulty, deploy the prior known-good commit, then verify DRAFT and organizer access again.
+Build and deploy the intended commit with the same `--env production`. Database migrations are additive; do not use local reset tooling or delete production content. If a release is faulty, deploy the prior known-good Worker and preserve the migrated database, then verify organizer access and read-only historical totals. Database recovery must use the verified Time Travel/backup point.
 
 ## Content import notes
 

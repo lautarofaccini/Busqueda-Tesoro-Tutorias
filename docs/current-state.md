@@ -1,12 +1,12 @@
 # Current State
 
-- **Current phase:** Live-event closing-grace hotfix prepared and validated locally; production data remains untouched.
+- **Current phase:** Historical audit, corrected scoring, final analytics, simplified organizer auth and safe event editions implemented locally; production data remains untouched.
 - **Current active feature branch:** feat/admin-event-ops-lan-test
-- **What currently works:** Local Worker API, local D1, Vite proxy, server-side session, HttpOnly cookie, start QR gating, wrong-checkpoint protection, replay protection, persistent randomized question pools per checkpoint, scoring, tie/rank logic, Checkpoint-first Admin Console, player identity onboarding (DNI), duplicate participation blocking, invalidate/release participants, assistance/review flows, and DRAFT/LIVE/PAUSED/CLOSING/ENDED lifecycle controls. CLOSING blocks new participants immediately, lets existing sessions continue for 30 minutes from `event_settings.updated_at`, and classifies unfinished sessions as incomplete after the effective deadline without changing their stored state.
-- **What is being built now:** Nothing beyond the scoped live-event closing-grace hotfix; it is awaiting an explicitly authorized deployment.
-- **Known limitations:** Production is live, so deployment itself can interrupt in-flight requests briefly and any unexpected runtime incompatibility would affect active participants. The full D1 integration suites create isolated local databases by applying migrations, so they were not run under this task's absolute no-migration constraint; focused route tests cover the new lifecycle behavior without a database migration.
-- **Next milestone:** Review and explicitly deploy the Worker/assets only, then smoke-test CLOSING behavior without migrations, imports, content changes, or remote database writes.
-- **Do not work on yet:** PWA, advanced analytics.
+- **What currently works:** Local Worker API, local D1, Vite proxy, server-side session, HttpOnly cookies, player lifecycle controls, append-only manual score corrections, audit suggestions/review state, one authoritative adjusted score across detail/ranking/analytics, historical edition selection, career/question/checkpoint analytics, safe new editions, username/password organizer login, and the separate limited assistance role. CLOSING behavior remains unchanged.
+- **Prepared but not applied:** Migration `0011_event_runs.sql` backfills Edition 1, snapshots its scoring configuration, moves invalidation authority to the participation, adds audit state and creates the immutable `score_adjustments` ledger. It has only been exercised against disposable local D1 data. It has not been applied to production.
+- **Known limitations:** Deployment requires applying migration 0011 before deploying code that reads its new tables/columns. Question/checkpoint reach is derived from persisted question assignments; it does not claim physical presence beyond that signal. No historical student-feedback table or collection flow exists, so the organizer view correctly reports an empty state. The inherited full API suite still contains legacy gameplay fixtures that assume the older step-zero flow; focused lifecycle, audit, analytics and authentication coverage is the release signal until those fixtures are modernized.
+- **Next milestone:** After separate explicit approval, verify D1 Time Travel/backup readiness, configure `ADMIN_USERNAME`, `ADMIN_PASSWORD` and the existing `ORGANIZER_SECRET`, manually apply migration 0011, compare Edition 1 counts, deploy the exact validated commit, and perform read-only verification before any correction is entered.
+- **Do not work on yet:** PWA or unrelated infrastructure work.
 
 ## Current Phase
 **Phase 3: Admin Event Ops & LAN Testing** (Completed Final Corrections)
@@ -21,7 +21,10 @@ Following the physical LAN test, several crucial adjustments were made:
 - Each checkpoint card provides QR preview and SVG download from its stable token. Bulk QR export/ZIP does not yet exist; obtaining all production-printable QR files in one operation remains a production blocker.
 
 - **Last verified validation commands/results:**
-  - Shared, web, and focused API lifecycle/session tests (Passed)
-  - `npm run typecheck` equivalent using the bundled TypeScript runtime (Passed)
-  - `npm run build` equivalent using the bundled Vite runtime (Passed)
-  - `npx wrangler deploy --dry-run --env production` equivalent using the bundled Wrangler runtime (Passed; no deployment)
+  - Shared tests: 19/19 passed
+  - Web tests: 77/77 passed
+  - Focused API lifecycle/audit/analytics/authentication tests: 35/35 passed
+  - Full API suite: 51/70 passed; 19 inherited failures remain in legacy `game.test.ts` and `scoring.test.ts` fixtures that assume the pre-existing step-one flow
+  - `npm run typecheck` equivalent using the bundled TypeScript runtime: passed for shared, web and API
+  - `npm run build` equivalent using the bundled Vite runtime: passed
+  - `npx wrangler deploy --dry-run --env production` equivalent using Wrangler 4.135.0: passed; no deployment
