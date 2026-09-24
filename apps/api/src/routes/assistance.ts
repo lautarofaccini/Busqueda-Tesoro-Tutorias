@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie'
 import { z } from 'zod'
 import type { Env } from '../env.d'
-import { timingSafeSecretEqual } from '../lib/totp.js'
+import { timingSafeSecretEqual } from '../lib/auth.js'
 import { getAssistanceFeed, resolveAnswerReview, resolveSupportRequest } from '../lib/assistance.js'
 
 export const assistanceRoutes = new Hono<{ Bindings: Env }>()

@@ -7,7 +7,8 @@
 export interface Env {
   DB: D1Database
   ORGANIZER_SECRET: string
-  ORGANIZER_TOTP_SECRET: string
+  ADMIN_USERNAME: string
+  ADMIN_PASSWORD: string
   PARTICIPANT_ID_SECRET: string
   ASSISTANCE_USERNAME: string
   ASSISTANCE_PASSWORD: string

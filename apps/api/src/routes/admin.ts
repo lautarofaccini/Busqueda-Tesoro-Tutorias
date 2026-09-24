@@ -32,23 +32,38 @@ export const EVENT_SETTINGS_UPDATE_SQL = `
   `
 
 export async function updateEventSettings(db: D1Database, data: z.infer<typeof eventSettingsSchema>) {
-  await db.prepare(EVENT_SETTINGS_UPDATE_SQL).bind(
-    data.status,
-    data.status,
-    data.event_name,
-    data.points_per_correct,
-    data.wrong_answer_penalty,
-    data.hint_penalty,
-    data.minimum_expected_completion_minutes,
-  ).run()
+  await db.batch([
+    db.prepare(EVENT_SETTINGS_UPDATE_SQL).bind(
+      data.status,
+      data.status,
+      data.event_name,
+      data.points_per_correct,
+      data.wrong_answer_penalty,
+      data.hint_penalty,
+      data.minimum_expected_completion_minutes,
+    ),
+    db.prepare(`UPDATE event_runs SET
+      started_at = CASE WHEN ? = 'LIVE' AND started_at IS NULL THEN datetime('now') ELSE started_at END,
+      closing_at = CASE WHEN status != 'CLOSING' AND ? = 'CLOSING' THEN datetime('now') ELSE closing_at END,
+      ended_at = CASE WHEN ? = 'ENDED' AND ended_at IS NULL THEN datetime('now') ELSE ended_at END,
+      points_per_correct = CASE WHEN status = 'DRAFT' THEN ? ELSE points_per_correct END,
+      wrong_answer_penalty = CASE WHEN status = 'DRAFT' THEN ? ELSE wrong_answer_penalty END,
+      hint_penalty = CASE WHEN status = 'DRAFT' THEN ? ELSE hint_penalty END,
+      minimum_expected_completion_minutes = CASE WHEN status = 'DRAFT' THEN ? ELSE minimum_expected_completion_minutes END,
+      status = ?
+      WHERE id = (SELECT current_event_run_id FROM event_settings WHERE id = 1)`)
+      .bind(data.status, data.status, data.status, data.points_per_correct,
+        data.wrong_answer_penalty, data.hint_penalty,
+        data.minimum_expected_completion_minutes, data.status),
+  ])
 }
 
 async function getEventOverview(db: D1Database, now = Date.now()) {
   const settings = await db.prepare('SELECT * FROM event_settings WHERE id = 1').first<any>()
   if (!settings) return null
   const active = await db.prepare(`SELECT COUNT(*) AS count FROM sessions s
-    JOIN participants p ON p.id = s.participant_id
-    WHERE s.status = 'active' AND p.invalidated_at IS NULL`).first<{ count: number }>()
+    WHERE s.event_run_id = ? AND s.status = 'active' AND s.invalidated_at IS NULL`)
+    .bind(settings.current_event_run_id).first<{ count: number }>()
   return {
     ...settings,
     effectiveStatus: getEffectiveEventStatus(settings, now),
@@ -86,6 +101,28 @@ adminRoutes.put('/event', zValidator('json', eventSettingsSchema), async (c) => 
   await updateEventSettings(c.env.DB, data)
   const overview = await getEventOverview(c.env.DB)
   return c.json(overview ? { success: true, ...overview } : { success: true })
+})
+
+adminRoutes.post('/event/runs', zValidator('json', z.object({ confirmed: z.literal(true), name: z.string().trim().min(1).max(100).optional() })), async (c) => {
+  const settings = await c.env.DB.prepare('SELECT * FROM event_settings WHERE id = 1').first<any>()
+  if (!settings || getEffectiveEventStatus(settings) !== 'ENDED') {
+    return c.json({ error: 'CURRENT_EDITION_NOT_ENDED' }, 409)
+  }
+  const requestedName = c.req.valid('json').name
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO event_runs (
+      name, status, points_per_correct, wrong_answer_penalty, hint_penalty,
+      minimum_expected_completion_minutes
+    ) SELECT
+      COALESCE(?, 'Edición ' || (COALESCE(MAX(id), 0) + 1) || ' — ' || strftime('%d/%m/%Y', 'now', '-3 hours')),
+      'DRAFT', ?, ?, ?, ? FROM event_runs`)
+      .bind(requestedName ?? null, settings.points_per_correct, settings.wrong_answer_penalty,
+        settings.hint_penalty, settings.minimum_expected_completion_minutes),
+    c.env.DB.prepare(`UPDATE event_settings SET
+      current_event_run_id = (SELECT MAX(id) FROM event_runs), status = 'DRAFT', updated_at = datetime('now')
+      WHERE id = 1`),
+  ])
+  return c.json({ success: true, ...(await getEventOverview(c.env.DB)) }, 201)
 })
 
 // --- CHECKPOINTS ---
@@ -212,37 +249,22 @@ adminRoutes.put('/routes/:id', zValidator('json', routeSchema), async (c) => {
 
 
 adminRoutes.post('/reset', async (c) => {
-  // Hard delete participant-generated data
-  await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM answer_review_requests'),
-    c.env.DB.prepare('DELETE FROM support_requests'),
-    c.env.DB.prepare('DELETE FROM hint_usage'),
-    c.env.DB.prepare('DELETE FROM question_hint_usage'),
-    c.env.DB.prepare('DELETE FROM scan_events'),
-    c.env.DB.prepare('DELETE FROM answer_attempts'),
-    c.env.DB.prepare('DELETE FROM session_challenge_assignments'),
-    c.env.DB.prepare('DELETE FROM session_steps'),
-    c.env.DB.prepare('DELETE FROM sessions'),
-    c.env.DB.prepare('DELETE FROM participants'),
-    // Reset event status to DRAFT
-    c.env.DB.prepare("UPDATE event_settings SET status = 'DRAFT'")
-  ])
-  return c.json({ success: true })
+  return c.json({ error: 'LEGACY_RESET_DISABLED', message: 'Usá Nueva edición para conservar el historial.' }, 410)
 })
 
-adminRoutes.post('/participants/:id/invalidate', zValidator('json', z.object({ reason: z.string() })), async (c) => {
+adminRoutes.post('/sessions/:id/invalidate', zValidator('json', z.object({ reason: z.string().trim().min(1).max(500) })), async (c) => {
   const id = parseInt(c.req.param('id'))
   const { reason } = c.req.valid('json')
   await c.env.DB.prepare(
-    "UPDATE participants SET invalidated_at = datetime('now'), invalidation_reason = ? WHERE id = ?"
+    "UPDATE sessions SET invalidated_at = datetime('now'), invalidation_reason = ? WHERE id = ?"
   ).bind(reason, id).run()
   return c.json({ success: true })
 })
 
-adminRoutes.post('/participants/:id/release', async (c) => {
+adminRoutes.post('/sessions/:id/release', async (c) => {
   const id = parseInt(c.req.param('id'))
   await c.env.DB.prepare(
-    "UPDATE participants SET invalidated_at = NULL, invalidation_reason = NULL WHERE id = ?"
+    "UPDATE sessions SET invalidated_at = NULL, invalidation_reason = NULL WHERE id = ?"
   ).bind(id).run()
   return c.json({ success: true })
 })
@@ -261,7 +283,7 @@ adminRoutes.post('/assistance/support/:id/resolve', zValidator('json', z.object(
 })
 
 adminRoutes.post('/participants/:id/manual-checkpoint', async (c) => {
-  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE participant_id=? AND status='active' ORDER BY id DESC LIMIT 1").bind(Number(c.req.param('id'))).first<any>()
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE participant_id=? AND event_run_id=(SELECT current_event_run_id FROM event_settings WHERE id=1) AND status='active' ORDER BY id DESC LIMIT 1").bind(Number(c.req.param('id'))).first<any>()
   if (!session) return c.json({ error: 'NO_ACTIVE_SESSION' }, 404)
   const settings = await c.env.DB.prepare('SELECT status, updated_at FROM event_settings WHERE id=1').first<any>()
   if (settings?.status === 'CLOSING' && !isClosingGraceActive(settings, Date.now())) {

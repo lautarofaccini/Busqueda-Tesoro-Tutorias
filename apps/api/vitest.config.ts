@@ -5,6 +5,8 @@ export default defineConfig({
     // Run API integration tests sequentially — unstable_dev starts a real process.
     // Use singleThread to avoid port conflicts when running multiple test files.
     singleThread: true,
+    fileParallelism: false,
+    maxWorkers: 1,
     testTimeout: 90_000,
     hookTimeout: 90_000,
     include: ['src/__tests__/**/*.test.ts'],

@@ -1,19 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { generateTotp, verifyTotp } from '../lib/totp.js'
+import { timingSafeSecretEqual } from '../lib/auth.js'
 import { isLoginRateLimited, organizerRoutes } from '../routes/organizer.js'
 
-const SECRET = 'JBSWY3DPEHPK3PXP'
-const NOW = 1_700_000_000_000
-
-describe('organizer TOTP and rate-limit primitives', () => {
-  it('accepts the current and one adjacent 30-second RFC 6238 window only', async () => {
-    const current = await generateTotp(SECRET, NOW)
-    const previous = await generateTotp(SECRET, NOW - 30_000)
-    const outside = await generateTotp(SECRET, NOW - 60_000)
-    await expect(verifyTotp(SECRET, current, NOW)).resolves.toBe(true)
-    await expect(verifyTotp(SECRET, previous, NOW)).resolves.toBe(true)
-    await expect(verifyTotp(SECRET, outside, NOW)).resolves.toBe(false)
-    await expect(verifyTotp(SECRET, '12345', NOW)).resolves.toBe(false)
+describe('organizer authentication primitives', () => {
+  it('compares configured credentials without exposing their value', async () => {
+    await expect(timingSafeSecretEqual('configured-secret', 'configured-secret')).resolves.toBe(true)
+    await expect(timingSafeSecretEqual('configured-secret', 'wrong-secret')).resolves.toBe(false)
+    await expect(timingSafeSecretEqual(undefined, 'anything')).resolves.toBe(false)
   })
 
   it('uses the rate-limit binding with a per-actor login key', async () => {
@@ -26,10 +19,11 @@ describe('organizer TOTP and rate-limit primitives', () => {
     const response = await organizerRoutes.fetch(new Request('https://example.test/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.8' },
-      body: JSON.stringify({ passphrase: 'anything', totp: '123456' }),
+      body: JSON.stringify({ username: 'anything', password: 'anything' }),
     }), {
-      ORGANIZER_SECRET: 'password',
-      ORGANIZER_TOTP_SECRET: SECRET,
+      ORGANIZER_SECRET: 'cookie-signing-secret',
+      ADMIN_USERNAME: 'adminTutores21',
+      ADMIN_PASSWORD: 'strong-password',
       PARTICIPANT_ID_SECRET: 'participant-secret',
       ADMIN_LOGIN_LIMITER: { limit: async () => ({ success: false }) } as unknown as RateLimit,
     })

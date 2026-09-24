@@ -55,6 +55,10 @@ sessionRoutes.post(
     if (!settings || settings.status !== 'LIVE') {
       return c.json({ error: 'EVENT_NOT_LIVE', status: settings?.status || 'DRAFT' }, 403)
     }
+    const eventRunId = Number(settings.current_event_run_id)
+    if (!Number.isInteger(eventRunId) || eventRunId <= 0) {
+      return c.json({ error: 'EVENT_RUN_NOT_CONFIGURED' }, 503)
+    }
 
     // Verify the token is the start checkpoint
     const checkpoint = await getCheckpointByToken(c.env.DB, startToken)
@@ -84,14 +88,11 @@ sessionRoutes.post(
     let participant = await findParticipant(c.env.DB, identifierType, identifierHash)
     let newlyCreatedParticipantId: number | null = null
     if (participant) {
-      if (participant.invalidated_at) {
-        return c.json({ error: 'IDENTIFIER_RELEASE_REQUIRED' }, 403)
-      } else {
-        // Check if they have an active session
-        const existingSessionRes = await c.env.DB.prepare('SELECT id FROM sessions WHERE participant_id = ? AND status != \'abandoned\'').bind(participant.id).first()
-        if (existingSessionRes) {
-          return c.json({ error: 'DUPLICATE_PARTICIPATION' }, 403)
-        }
+      const existingSessionRes = await c.env.DB.prepare(
+        "SELECT id FROM sessions WHERE participant_id = ? AND event_run_id = ? AND status != 'abandoned'"
+      ).bind(participant.id, eventRunId).first()
+      if (existingSessionRes) {
+        return c.json({ error: 'DUPLICATE_PARTICIPATION' }, 403)
       }
     } else {
       const pId = await createParticipant(c.env.DB, {
@@ -113,6 +114,7 @@ sessionRoutes.post(
         sessionToken,
         playerName: `${playerName.trim()} ${lastName.trim()}`,
         participantId: participant.id,
+        eventRunId,
       })
 
       if (await getSessionTotalSteps(c.env.DB, sessionId) === 0) {
@@ -132,6 +134,7 @@ sessionRoutes.post(
 
       const session = {
         id: sessionId,
+        event_run_id: eventRunId,
         session_token: sessionToken,
         player_name: playerName.trim(),
         current_step: 0,

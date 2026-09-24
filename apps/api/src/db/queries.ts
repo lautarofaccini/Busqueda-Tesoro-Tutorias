@@ -12,6 +12,8 @@
  *   An answer is valid ONLY when unlocked_step === current_step.
  */
 
+import { normalizeAnswer } from '@busqueda-tesoro/shared'
+
 // ── Row types ─────────────────────────────────────────────────────────────
 
 export interface CheckpointRow {
@@ -24,6 +26,7 @@ export interface CheckpointRow {
 
 export interface SessionRow {
   id: number
+  event_run_id: number
   session_token: string
   player_name: string
   current_step: number
@@ -73,9 +76,10 @@ export async function getAnySession(
 ): Promise<SessionRow | null> {
   const result = await db
     .prepare(
-      `SELECT id, session_token, player_name, current_step, status,
+      `SELECT id, event_run_id, session_token, player_name, current_step, status,
               unlocked_step, started_at, completed_at
-       FROM sessions WHERE session_token = ?`
+       FROM sessions WHERE session_token = ?
+         AND event_run_id = (SELECT current_event_run_id FROM event_settings WHERE id = 1)`
     )
     .bind(sessionToken)
     .first<SessionRow>()
@@ -89,9 +93,10 @@ export async function getActiveSession(
 ): Promise<SessionRow | null> {
   const result = await db
     .prepare(
-      `SELECT id, session_token, player_name, current_step, status,
+      `SELECT id, event_run_id, session_token, player_name, current_step, status,
               unlocked_step, started_at, completed_at
-       FROM sessions WHERE session_token = ? AND status = 'active'`
+       FROM sessions WHERE session_token = ? AND status = 'active'
+         AND event_run_id = (SELECT current_event_run_id FROM event_settings WHERE id = 1)`
     )
     .bind(sessionToken)
     .first<SessionRow>()
@@ -261,14 +266,15 @@ export async function createSession(
     sessionToken: string
     playerName: string
     participantId: number
+    eventRunId: number
   }
 ): Promise<number> {
   const result = await db
     .prepare(
-      `INSERT INTO sessions (session_token, player_name, current_step, status, unlocked_step, participant_id)
-       VALUES (?, ?, 0, 'active', 0, ?)`
+      `INSERT INTO sessions (session_token, player_name, current_step, status, unlocked_step, participant_id, event_run_id)
+       VALUES (?, ?, 0, 'active', 0, ?, ?)`
     )
-    .bind(opts.sessionToken, opts.playerName, opts.participantId)
+    .bind(opts.sessionToken, opts.playerName, opts.participantId, opts.eventRunId)
     .run();
   
   const sessionId = result.meta.last_row_id as number;
@@ -420,8 +426,12 @@ export async function getOrganizerResults(db: D1Database) {
       p.identifier_type as identifierType,
       p.identifier_suffix as identifierSuffix,
       p.career as career,
-      p.invalidated_at as invalidatedAt,
-      p.invalidation_reason as invalidationReason,
+      s.invalidated_at as invalidatedAt,
+      s.invalidation_reason as invalidationReason,
+      s.audit_reviewed_at as auditReviewedAt,
+      er.points_per_correct as pointsPerCorrect,
+      er.wrong_answer_penalty as wrongAnswerPenalty,
+      er.hint_penalty as hintPenalty,
       s.status, 
       s.current_step as currentStep,
       s.unlocked_step as unlockedStep,
@@ -430,11 +440,17 @@ export async function getOrganizerResults(db: D1Database) {
       (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
       IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount,
+      (SELECT COALESCE(SUM(awarded_correct),0) FROM answer_review_requests r WHERE r.session_id=s.id AND r.status='APPROVED') as manualCorrectCount,
+      (SELECT COALESCE(SUM(reversed_wrong),0) FROM answer_review_requests r WHERE r.session_id=s.id AND r.status='APPROVED') as reversedWrongCount,
+      (SELECT COALESCE(SUM(amount),0) FROM score_adjustments sa WHERE sa.session_id=s.id) as manualAdjustmentTotal,
+      (SELECT COUNT(*) FROM score_adjustments sa WHERE sa.session_id=s.id) as manualAdjustmentCount,
       (SELECT COUNT(*) FROM question_hint_usage h WHERE h.session_id = s.id) as hintsUsed,
       EXISTS(SELECT 1 FROM answer_review_requests r WHERE r.session_id = s.id AND r.status = 'PENDING') as pendingReview
     FROM sessions s
     JOIN participants p ON s.participant_id = p.id
+    JOIN event_runs er ON er.id = s.event_run_id
     LEFT JOIN answer_attempts a ON s.id = a.session_id
+    WHERE s.event_run_id = (SELECT current_event_run_id FROM event_settings WHERE id = 1)
     GROUP BY s.id
   `).all()
   return result.results
@@ -442,6 +458,7 @@ export async function getOrganizerResults(db: D1Database) {
 
 export type OrganizerSessionSnapshot = {
   id: number
+  eventRunId?: number
   playerName: string
   career: string | null
   identifierType: string
@@ -452,6 +469,10 @@ export type OrganizerSessionSnapshot = {
   startedAt: string
   completedAt: string | null
   totalSteps: number
+  invalidatedAt?: string | null
+  invalidationReason?: string | null
+  auditReviewedAt?: string | null
+  auditReviewedBy?: string | null
 }
 
 /**
@@ -493,17 +514,20 @@ export async function getOrganizerStateSince(db: D1Database, session: OrganizerS
 
 export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number) {
   const session = await db.prepare(`
-    SELECT s.id, s.player_name AS playerName, p.career, p.identifier_type AS identifierType,
+    SELECT s.id, s.event_run_id AS eventRunId, s.player_name AS playerName, p.career, p.identifier_type AS identifierType,
       p.identifier_suffix AS identifierSuffix, s.status, s.current_step AS currentStep,
       s.unlocked_step AS unlockedStep, s.started_at AS startedAt, s.completed_at AS completedAt,
+      s.invalidated_at AS invalidatedAt, s.invalidation_reason AS invalidationReason,
+      s.audit_reviewed_at AS auditReviewedAt, s.audit_reviewed_by AS auditReviewedBy,
       (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) AS totalSteps
     FROM sessions s JOIN participants p ON p.id = s.participant_id WHERE s.id = ?
   `).bind(sessionId).first<OrganizerSessionSnapshot>()
   if (!session) return null
 
-  const [settings, score, pendingReview, current, destination, assignments, attempts, navigationHints] = await Promise.all([
-    db.prepare('SELECT points_per_correct, wrong_answer_penalty, hint_penalty FROM event_settings WHERE id = 1').first<any>(),
-    getSessionScore(db, sessionId),
+  const [settings, scoreBreakdown, pendingReview, current, destination, assignments, attempts, navigationHints, scoreAdjustments] = await Promise.all([
+    db.prepare(`SELECT er.points_per_correct, er.wrong_answer_penalty, er.hint_penalty
+      FROM sessions s JOIN event_runs er ON er.id = s.event_run_id WHERE s.id = ?`).bind(sessionId).first<any>(),
+    getSessionScoreBreakdown(db, sessionId),
     db.prepare("SELECT COUNT(*) AS count FROM answer_review_requests WHERE session_id = ? AND status = 'PENDING'").bind(sessionId).first<{ count: number }>(),
     db.prepare(`SELECT cp.label AS checkpoint, ch.question_text AS question, sca.assigned_at AS assignedAt,
       qhu.used_at AS hintUsedAt
@@ -520,7 +544,7 @@ export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number
       JOIN challenges ch ON ch.id = sca.challenge_id JOIN checkpoints cp ON cp.id = ch.checkpoint_id
       LEFT JOIN question_hint_usage qhu ON qhu.session_id = sca.session_id AND qhu.challenge_id = sca.challenge_id
       WHERE sca.session_id = ? ORDER BY sca.route_step`).bind(sessionId).all<any>(),
-    db.prepare(`SELECT a.id, sca.route_step AS stepPosition, a.raw_answer AS answer, a.correct,
+    db.prepare(`SELECT a.id, a.challenge_id AS challengeId, sca.route_step AS stepPosition, a.raw_answer AS answer, a.correct,
       a.attempted_at AS attemptedAt, r.status AS reviewStatus, r.created_at AS reviewRequestedAt,
       r.resolved_at AS reviewResolvedAt, r.awarded_correct AS awardedCorrect,
       r.reversed_wrong AS reversedWrong
@@ -529,6 +553,10 @@ export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number
       LEFT JOIN answer_review_requests r ON r.answer_attempt_id = a.id
       WHERE a.session_id = ? ORDER BY a.attempted_at, a.id`).bind(sessionId).all<any>(),
     db.prepare('SELECT step_position AS stepPosition, used_at AS usedAt FROM hint_usage WHERE session_id = ? ORDER BY step_position').bind(sessionId).all<any>(),
+    db.prepare(`SELECT id, amount, reason, related_attempt_id AS relatedAttemptId,
+      compensates_adjustment_id AS compensatesAdjustmentId, created_by AS createdBy,
+      created_at AS createdAt FROM score_adjustments WHERE session_id = ? ORDER BY created_at, id`)
+      .bind(sessionId).all<any>(),
   ])
   const stateSince = await getOrganizerStateSince(db, session)
   const attemptsByStep = new Map<number, any[]>()
@@ -551,10 +579,37 @@ export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number
     attempts: attemptsByStep.get(Number(assignment.stepPosition)) ?? [],
   }))
 
+  const flatAttempts = history.flatMap((item: any) => item.attempts)
+  const auditSuggestions: Array<{ code: string; label: string; attemptIds?: number[] }> = []
+  for (const attempt of flatAttempts.filter((item: any) => !item.correct)) {
+    const laterMatchingCorrect = flatAttempts.find((candidate: any) => candidate.correct
+      && Number(candidate.id) > Number(attempt.id)
+      && Number(candidate.challengeId) === Number(attempt.challengeId)
+      && normalizeAnswer(candidate.answer) === normalizeAnswer(attempt.answer))
+    if (laterMatchingCorrect) auditSuggestions.push({
+      code: 'REJECTED_THEN_ACCEPTED_EQUIVALENT',
+      label: 'Una respuesta equivalente fue rechazada y luego aceptada. Revisá la penalidad original.',
+      attemptIds: [Number(attempt.id), Number(laterMatchingCorrect.id)],
+    })
+    if (attempt.reviewStatus === 'APPROVED') auditSuggestions.push({
+      code: 'APPROVED_REVIEW', label: 'Una respuesta incorrecta tuvo revisión aprobada.', attemptIds: [Number(attempt.id)],
+    })
+    if (attempt.reviewStatus === 'PENDING') auditSuggestions.push({
+      code: 'PENDING_REVIEW', label: 'Hay una revisión de respuesta todavía pendiente.', attemptIds: [Number(attempt.id)],
+    })
+  }
+  if ((scoreBreakdown.hintCount ?? 0) > 0) auditSuggestions.push({
+    code: 'HINTS_USED', label: `Se cobraron ${scoreBreakdown.hintCount} pista(s) de pregunta; verificar solo si hubo un incidente reportado.`,
+  })
+
   return {
     ...session,
-    score,
-    errors: history.flatMap((item: any) => item.attempts).filter((attempt: any) => !attempt.correct).length,
+    score: scoreBreakdown.finalScore,
+    scoreBreakdown,
+    scoreAdjustments: scoreAdjustments.results ?? [],
+    auditSuggestions,
+    auditStatus: session.auditReviewedAt ? 'REVIEWED' : 'PENDING',
+    errors: flatAttempts.filter((attempt: any) => !attempt.correct).length,
     questionHints: history.filter((item: any) => item.hintUsedAt).length,
     navigationHints: navigationHints.results?.length ?? 0,
     pendingReview: Number(pendingReview?.count ?? 0) > 0,
@@ -612,15 +667,62 @@ export async function logQuestionHintUsage(db: D1Database, sessionId: number, ch
 }
 
 export async function getSessionScore(db: D1Database, sessionId: number): Promise<number> {
-  const counts = await db.prepare(`SELECT
-    (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 1) AS correct_count,
-    (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 0) AS wrong_count,
-    (SELECT COUNT(*) FROM question_hint_usage WHERE session_id = ?) AS hint_count,
-    (SELECT COUNT(*) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED' AND awarded_correct = 1) AS manual_correct_count,
-    (SELECT COUNT(*) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED' AND reversed_wrong = 1) AS reversed_wrong_count
-  `).bind(sessionId, sessionId, sessionId, sessionId, sessionId).first<{ correct_count: number; wrong_count: number; hint_count: number; manual_correct_count: number; reversed_wrong_count: number }>()
-  const settings = await getEventSettings(db) as { points_per_correct?: number; wrong_answer_penalty?: number; hint_penalty?: number } | null
-  return Math.max(0, ((counts?.correct_count ?? 0) + (counts?.manual_correct_count ?? 0)) * (settings?.points_per_correct ?? 100) - Math.max(0, (counts?.wrong_count ?? 0) - (counts?.reversed_wrong_count ?? 0)) * (settings?.wrong_answer_penalty ?? 10) - (counts?.hint_count ?? 0) * (settings?.hint_penalty ?? 5))
+  return (await getSessionScoreBreakdown(db, sessionId)).finalScore
+}
+
+export type SessionScoreBreakdown = {
+  rawCorrectCount: number
+  rawWrongCount: number
+  approvedCorrectCount: number
+  approvedReversedWrongCount: number
+  correctCount: number
+  wrongCount: number
+  hintCount: number
+  pointsPerCorrect: number
+  wrongAnswerPenalty: number
+  hintPenalty: number
+  scoreBeforeApprovedReviews: number
+  approvedReviewCorrection: number
+  originalCalculatedScore: number
+  manualAdjustmentTotal: number
+  finalScore: number
+}
+
+/** Single authoritative score derivation used by gameplay, detail, ranking and analytics. */
+export async function getSessionScoreBreakdown(db: D1Database, sessionId: number): Promise<SessionScoreBreakdown> {
+  const row = await db.prepare(`SELECT
+    (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 1) AS rawCorrectCount,
+    (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 0) AS rawWrongCount,
+    (SELECT COALESCE(SUM(awarded_correct),0) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED') AS approvedCorrectCount,
+    (SELECT COALESCE(SUM(reversed_wrong),0) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED') AS approvedReversedWrongCount,
+    (SELECT COUNT(*) FROM question_hint_usage WHERE session_id = ?) AS hintCount,
+    er.points_per_correct AS pointsPerCorrect,
+    er.wrong_answer_penalty AS wrongAnswerPenalty,
+    er.hint_penalty AS hintPenalty,
+    (SELECT COALESCE(SUM(amount),0) FROM score_adjustments WHERE session_id = ?) AS manualAdjustmentTotal
+    FROM sessions s JOIN event_runs er ON er.id = s.event_run_id WHERE s.id = ?
+  `).bind(sessionId, sessionId, sessionId, sessionId, sessionId, sessionId, sessionId).first<any>()
+  const rawCorrectCount = Number(row?.rawCorrectCount ?? 0)
+  const rawWrongCount = Number(row?.rawWrongCount ?? 0)
+  const approvedCorrectCount = Number(row?.approvedCorrectCount ?? 0)
+  const approvedReversedWrongCount = Math.min(rawWrongCount, Number(row?.approvedReversedWrongCount ?? 0))
+  const correctCount = rawCorrectCount + approvedCorrectCount
+  const wrongCount = Math.max(0, rawWrongCount - approvedReversedWrongCount)
+  const hintCount = Number(row?.hintCount ?? 0)
+  const pointsPerCorrect = Number(row?.pointsPerCorrect ?? 100)
+  const wrongAnswerPenalty = Number(row?.wrongAnswerPenalty ?? 10)
+  const hintPenalty = Number(row?.hintPenalty ?? 5)
+  const scoreBeforeApprovedReviews = Math.max(0, rawCorrectCount * pointsPerCorrect - rawWrongCount * wrongAnswerPenalty - hintCount * hintPenalty)
+  const approvedReviewCorrection = approvedCorrectCount * pointsPerCorrect + approvedReversedWrongCount * wrongAnswerPenalty
+  const originalCalculatedScore = Math.max(0, correctCount * pointsPerCorrect - wrongCount * wrongAnswerPenalty - hintCount * hintPenalty)
+  const manualAdjustmentTotal = Number(row?.manualAdjustmentTotal ?? 0)
+  return {
+    rawCorrectCount, rawWrongCount, approvedCorrectCount, approvedReversedWrongCount,
+    correctCount, wrongCount, hintCount, pointsPerCorrect, wrongAnswerPenalty, hintPenalty,
+    scoreBeforeApprovedReviews, approvedReviewCorrection,
+    originalCalculatedScore, manualAdjustmentTotal,
+    finalScore: Math.max(0, originalCalculatedScore + manualAdjustmentTotal),
+  }
 }
 
 export async function getCheckpointByFallbackCode(db: D1Database, code: string): Promise<CheckpointRow | null> {

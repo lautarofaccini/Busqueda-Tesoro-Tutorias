@@ -1,280 +1,121 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { PlayerDetailDrawer } from '../components/PlayerDetailDrawer'
-import { elapsedSeconds, formatElapsed, formatEventTime } from '../lib/eventTime'
+import { formatElapsed, formatEventDateTime } from '../lib/eventTime'
+
+const statusLabel: Record<string, string> = { DRAFT: 'Borrador', LIVE: 'En vivo', PAUSED: 'Pausada', CLOSING: 'Cierre en curso', ENDED: 'Finalizada' }
+const metric = (value: unknown) => value === null || value === undefined ? '—' : String(value)
+
+function Bar({ value, max }: { value: number; max: number }) {
+  return <div className="mt-1 h-2 overflow-hidden rounded bg-neutral-200"><div className="h-full rounded bg-orange-500" style={{ width: `${max ? Math.max(3, value * 100 / max) : 0}%` }} /></div>
+}
 
 export function OrganizerView({ isEmbedded }: { isEmbedded?: boolean } = {}) {
-  const [passphrase, setPassphrase] = useState('')
-  const [totp, setTotp] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [runs, setRuns] = useState<any[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [participantToInvalidate, setParticipantToInvalidate] = useState<number | null>(null)
+  const [sessionToInvalidate, setSessionToInvalidate] = useState<number | null>(null)
   const [invalidationReason, setInvalidationReason] = useState('')
-  const [participantToRelease, setParticipantToRelease] = useState<number | null>(null)
+  const [sessionToRelease, setSessionToRelease] = useState<number | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
-  const [now, setNow] = useState(Date.now())
+  const [showTechnical, setShowTechnical] = useState(false)
+  const [auditFilter, setAuditFilter] = useState<'ALL' | 'PENDING' | 'REVIEWED'>('ALL')
 
-  const fetchResults = async () => {
-    setLoading(true)
+  const loadAnalytics = async (runId: number) => {
+    const response = await fetch(`/api/organizer/runs/${runId}/analytics`)
+    if (!response.ok) throw new Error('ANALYTICS_LOAD_FAILED')
+    setData(await response.json())
+  }
+
+  const fetchResults = async (preferredRunId?: number | null) => {
+    setLoading(true); setError('')
     try {
-      const res = await fetch('/api/organizer/results')
-      if (res.status === 401) {
-        setIsAuthenticated(false)
-      } else if (res.ok) {
+      const response = await fetch('/api/organizer/runs')
+      if (response.status === 401) setIsAuthenticated(false)
+      else if (response.ok) {
+        const body = await response.json()
         setIsAuthenticated(true)
-        setData(await res.json())
-      } else {
-        setError('Error fetching results')
-      }
-    } catch (e) {
-      setError('Network error')
-    }
+        // Compatibility with pre-edition local fixtures.
+        if (!Array.isArray(body.runs)) setData(body)
+        else {
+          setRuns(body.runs)
+          const chosen = preferredRunId ?? selectedRunId ?? body.runs.find((run: any) => run.isCurrent)?.id ?? body.runs[0]?.id
+          if (chosen) { setSelectedRunId(Number(chosen)); await loadAnalytics(Number(chosen)) }
+        }
+      } else setError('No se pudieron cargar los resultados.')
+    } catch { setError('No se pudieron cargar los resultados.') }
     setLoading(false)
   }
 
-  useEffect(() => {
-    fetchResults()
-  }, [])
+  useEffect(() => { void fetchResults() }, [])
 
-  useEffect(() => {
-    if (!data?.active?.length) return
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
-    return () => window.clearInterval(timer)
-  }, [data?.active?.length])
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault(); setLoading(true); setError('')
     try {
-      const res = await fetch('/api/organizer/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase, totp })
-      })
-      if (res.ok) {
-        await fetchResults()
-      } else {
-        setError(res.status === 429 ? 'Demasiados intentos. Intentá nuevamente en unos instantes.' : 'No se pudo autenticar.')
-      }
-    } catch (e) {
-      setError('Network error')
-    }
+      const response = await fetch('/api/organizer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
+      if (response.ok) await fetchResults()
+      else setError(response.status === 429 ? 'Demasiados intentos. Intentá nuevamente en unos instantes.' : 'No se pudo autenticar.')
+    } catch { setError('Error de red.') }
     setLoading(false)
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/organizer/logout', { method: 'POST' })
-    setIsAuthenticated(false)
-    setData(null)
-    setPassphrase('')
-    setTotp('')
+  const handleInvalidate = async () => {
+    if (!sessionToInvalidate || !invalidationReason.trim()) return
+    await fetch(`/api/admin/sessions/${sessionToInvalidate}/invalidate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: invalidationReason.trim() }) })
+    setSessionToInvalidate(null); setInvalidationReason(''); await fetchResults(selectedRunId)
+  }
+  const handleRelease = async () => {
+    if (!sessionToRelease) return
+    await fetch(`/api/admin/sessions/${sessionToRelease}/release`, { method: 'POST' })
+    setSessionToRelease(null); await fetchResults(selectedRunId)
   }
 
+  if (!isAuthenticated && !isEmbedded) return <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4"><form onSubmit={handleLogin} className="w-full max-w-sm rounded-lg bg-white p-6 shadow"><h2 className="mb-4 text-xl font-bold">Acceso de organizador</h2>{error && <p className="mb-4 text-sm text-red-600">{error}</p>}<label className="text-sm font-bold" htmlFor="organizer-username">Usuario</label><input id="organizer-username" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} className="mb-4 mt-1 w-full rounded border p-2" required /><label className="text-sm font-bold" htmlFor="organizer-password">Contraseña</label><input id="organizer-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} className="mb-4 mt-1 w-full rounded border p-2" required /><button className="w-full rounded bg-orange-600 p-2 text-white" disabled={loading}>{loading ? 'Verificando…' : 'Entrar'}</button></form></div>
+  if (loading && !data) return <div className="p-4">Cargando resultados…</div>
+  if (!data) return <div className="p-4 text-red-700">{error || 'No hay datos disponibles.'}</div>
 
-  const handleInvalidar = async () => {
-    if (!participantToInvalidate || !invalidationReason.trim()) return
-    await fetch(`/api/admin/participants/${participantToInvalidate}/invalidate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: invalidationReason.trim() })
-    })
-    setParticipantToInvalidate(null)
-    setInvalidationReason('')
-    fetchResults()
-  }
+  const maxCareer = Math.max(0, ...(data.careers ?? []).map((career: any) => career.participants))
+  const run = data.run
+  const filteredRanking = (data.ranking ?? []).filter((player: any) => auditFilter === 'ALL' || player.auditStatus === auditFilter)
+  return <div className={isEmbedded ? '' : 'min-h-screen bg-neutral-100 p-4 text-neutral-900'}><div className="mx-auto max-w-7xl">
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-black">Resultados del evento</h1>{run && <p className="mt-1 text-sm text-neutral-600">{run.name} · {statusLabel[run.effectiveStatus] ?? run.effectiveStatus}</p>}</div><button type="button" onClick={() => void fetchResults(selectedRunId)} className="rounded border bg-white px-3 py-2 text-sm font-bold">Actualizar</button></div>
 
-  const handleRehabilitar = async () => {
-    if (!participantToRelease) return
-    await fetch(`/api/admin/participants/${participantToRelease}/release`, {
-      method: 'POST'
-    })
-    setParticipantToRelease(null)
-    fetchResults()
-  }
+    {runs.length > 0 && <label className="mb-6 block rounded border bg-white p-4 font-bold">Edición<select aria-label="Edición" value={selectedRunId ?? ''} onChange={event => void fetchResults(Number(event.target.value))} className="mt-2 w-full rounded border p-3 font-normal sm:max-w-md">{runs.map(option => <option key={option.id} value={option.id}>{option.name} — {statusLabel[option.effectiveStatus] ?? option.effectiveStatus}{option.isCurrent ? ' (actual)' : ''}</option>)}</select>{run && <span className="mt-2 block text-xs font-normal text-neutral-500">Inicio: {run.startedAt ? formatEventDateTime(run.startedAt) : 'sin iniciar'} · Fin: {run.endedAt ? formatEventDateTime(run.endedAt) : run.effectiveStatus === 'ENDED' ? 'fin efectivo por plazo' : '—'}</span>}</label>}
 
-  if (!isAuthenticated && !isEmbedded) {
-    return (
-      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 font-sans text-neutral-900">
-        <form onSubmit={handleLogin} className="bg-white p-6 rounded-lg shadow max-w-sm w-full">
-          <h2 className="text-xl font-bold mb-4">Acceso de organizador</h2>
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-          <label className="block text-sm font-medium mb-1" htmlFor="organizer-password">Contraseña</label>
-          <input 
-            id="organizer-password"
-            type="password" 
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Contraseña"
-            className="w-full border rounded p-2 mb-4"
-            required
-          />
-          <label className="block text-sm font-medium mb-1" htmlFor="organizer-totp">Código de autenticación</label>
-          <input id="organizer-totp" type="text" value={totp} onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Código de autenticación" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="w-full border rounded p-2 mb-4" required />
-          <button type="submit" className="w-full bg-orange-600 text-white p-2 rounded" disabled={loading}>
-            {loading ? 'Verificando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    )
-  }
+    <section aria-label="Indicadores generales" className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-5">{[
+      ['Participantes totales', data.totals.all, 'text-orange-700'], ['Completaron', data.totals.completed, 'text-green-700'], ['No completaron', data.totals.incomplete ?? 0, 'text-red-700'], ['Invalidados', data.totals.invalidated ?? 0, 'text-neutral-700'], ['Finalización', data.totals.completionRate ?? (data.totals.valid ? Math.round(data.totals.completed * 100 / data.totals.valid) : 0), 'text-blue-700'],
+    ].map(([label, value, color], index) => <div key={String(label)} className="rounded bg-white p-4 text-center shadow"><p className={`text-3xl font-black ${color}`}>{value}{index === 4 ? '%' : ''}</p><p className="text-xs font-bold uppercase text-neutral-500">{label}</p></div>)}</section>
 
-  if (loading && !data) {
-    return <div className="p-4">Loading results...</div>
-  }
+    {data.globalPerformance && <section className="mb-8"><h2 className="mb-3 text-xl font-black">Rendimiento global</h2><div className="grid grid-cols-2 gap-3 lg:grid-cols-3">{[
+      ['Puntaje promedio', data.globalPerformance.averageCompletedScore], ['Mediana', data.globalPerformance.medianCompletedScore], ['Errores promedio', data.globalPerformance.averageWrongAnswers], ['Pistas promedio', data.globalPerformance.averageHints], ['Duración promedio', data.globalPerformance.averageCompletionDurationSec === null ? null : formatElapsed(data.globalPerformance.averageCompletionDurationSec)], ['Finalización más rápida', data.globalPerformance.fastestCompletionSec === null ? null : formatElapsed(data.globalPerformance.fastestCompletionSec)],
+    ].map(([label, value]) => <div key={String(label)} className="rounded border bg-white p-3"><p className="text-xs font-bold uppercase text-neutral-500">{label}</p><p className="mt-1 text-xl font-black">{metric(value)}</p></div>)}</div><p className="mt-2 text-xs text-neutral-500">Puntaje y duración: n={data.globalPerformance.sample} finalistas válidos. La finalización más rápida es descriptiva y no desempata.</p></section>}
 
-  if (!data) {
-    return <div className="p-4">No data available.</div>
-  }
+    {data.highlights && <section className="mb-8"><h2 className="mb-3 text-xl font-black">Destacados</h2><div className="grid gap-3 md:grid-cols-3">{[
+      ['Mayor participación', data.highlights.mostParticipation, 'participantes'], ['Mayor puntaje acumulado', data.highlights.mostTotalScore, 'puntos'], ['Mayor puntaje promedio', data.highlights.mostAverageScore, 'puntos promedio'],
+    ].map(([label, highlight, unit]: any) => <div key={label} className="rounded border-l-4 border-orange-500 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase text-neutral-500">{label}</p><p className="mt-1 font-black">{highlight.careers.join(' · ') || 'Sin datos'}</p><p className="text-sm">{highlight.value} {unit}</p></div>)}</div></section>}
 
-  const Wrapper = isEmbedded ? 'div' : 'div'
-  const wrapperClass = isEmbedded ? '' : 'min-h-screen bg-neutral-100 p-4 font-sans text-neutral-900'
+    {(data.careers?.length ?? 0) > 0 && <section className="mb-8"><h2 className="mb-3 text-xl font-black">Resultados por carrera</h2><div className="grid gap-3 lg:grid-cols-2">{data.careers.map((career: any) => <article key={career.career} className="rounded bg-white p-4 shadow-sm"><div className="flex justify-between gap-2"><h3 className="text-lg font-black">{career.career}</h3><span className="font-bold">{career.participants} · {career.sharePercent}%</span></div><Bar value={career.participants} max={maxCareer} /><dl className="mt-3 grid grid-cols-2 gap-2 text-sm"><div><dt className="text-neutral-500">Completaron / no</dt><dd className="font-bold">{career.completed} / {career.incomplete} · {career.completionRate}%</dd></div><div><dt className="text-neutral-500">Invalidados</dt><dd className="font-bold">{career.invalidated ?? 0}</dd></div><div><dt className="text-neutral-500">Puntaje total</dt><dd className="font-bold">{career.totalScore}</dd></div><div><dt className="text-neutral-500">Puntaje promedio</dt><dd className="font-bold">{metric(career.averageScore)} <small>(n={career.scoreSample})</small></dd></div><div><dt className="text-neutral-500">Duración promedio</dt><dd className="font-bold">{career.averageCompletionDurationSec === null ? '—' : formatElapsed(career.averageCompletionDurationSec)} <small>(n={career.durationSample})</small></dd></div><div><dt className="text-neutral-500">Errores promedio</dt><dd className="font-bold">{career.averageWrongAnswers} <small>(n={career.behaviorSample})</small></dd></div><div><dt className="text-neutral-500">Pistas promedio</dt><dd className="font-bold">{career.averageQuestionHints} <small>(n={career.behaviorSample})</small></dd></div></dl></article>)}</div></section>}
 
-  return (
-    <div className={wrapperClass}>
-      <div className="max-w-6xl mx-auto">
-        {!isEmbedded && (
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold">Resumen del Evento</h1>
-            <button onClick={fetchResults} className="bg-white border rounded px-3 py-1 shadow-sm text-sm hover:bg-neutral-50">
-              Actualizar
-            </button>
-            <button onClick={() => void handleLogout()} className="border rounded px-3 py-1 text-sm hover:bg-neutral-50">Cerrar sesión</button>
-          </div>
-        )}
-        
-        {isEmbedded && (
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold">Resumen de Resultados</h1>
-            <button onClick={fetchResults} className="bg-white border rounded px-3 py-1 shadow-sm text-sm hover:bg-neutral-50">
-              Actualizar
-            </button>
-          </div>
-        )}
+    <section className="mb-8"><div className="mb-3 flex flex-wrap items-end justify-between gap-2"><h2 className="text-xl font-black">Ranking individual · completaron</h2><label className="text-xs font-bold">Auditoría<select aria-label="Filtrar auditoría" value={auditFilter} onChange={event => setAuditFilter(event.target.value as typeof auditFilter)} className="ml-2 rounded border bg-white p-2 font-normal"><option value="ALL">Todas</option><option value="PENDING">Pendientes</option><option value="REVIEWED">Revisadas</option></select></label></div><div className="grid gap-3">{!filteredRanking.length && <p className="rounded bg-white p-4 text-neutral-500">No hay participantes para este filtro.</p>}{filteredRanking.map((player: any) => <article key={player.id} className="rounded bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-2"><div><p className="text-xs font-black text-blue-700">#{player.rank}{player.isTied ? ' · EMPATE' : ''}</p><h3 className="font-black">{player.playerName}</h3><p className="text-sm text-neutral-500">{player.career || 'Sin carrera'} · {player.identifierType} ···{player.identifierSuffix}</p></div><div className="text-right"><p className="text-2xl font-black text-orange-700">{player.score}</p>{player.manualAdjustmentCount > 0 && <p className="text-xs font-bold text-amber-700">{player.manualAdjustmentTotal > 0 ? '+' : ''}{player.manualAdjustmentTotal} manual</p>}</div></div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm"><span>Errores: <strong>{player.wrongCount}</strong></span><span>Pistas: <strong>{player.hintsUsed}</strong></span><span>Auditoría: <strong>{player.auditStatus === 'REVIEWED' ? 'REVISADA' : 'PENDIENTE'}</strong></span><span className="font-mono">FINALIZADO · {formatElapsed(player.durationSec)} total</span></div><div className="mt-3 flex gap-2"><button onClick={() => setSelectedSessionId(player.id)} className="rounded bg-blue-100 px-3 py-2 text-xs font-bold text-blue-800">Ver detalle</button><button onClick={() => setSessionToInvalidate(player.id)} className="rounded bg-red-50 px-3 py-2 text-xs font-bold text-red-700">Invalidar</button></div></article>)}</div></section>
 
-        <div className="grid grid-cols-2 gap-4 mb-8 lg:grid-cols-4">
-          <div className="bg-white p-4 rounded shadow text-center">
-            <div className="text-3xl font-bold text-orange-600">{data?.totals.all}</div>
-            <div className="text-sm text-neutral-500 uppercase">Participantes totales</div>
-          </div>
-          <div className="bg-white p-4 rounded shadow text-center">
-            <div className="text-3xl font-bold text-blue-600">{data?.totals.active}</div>
-            <div className="text-sm text-neutral-500 uppercase">En juego</div>
-          </div>
-          <div className="bg-white p-4 rounded shadow text-center">
-            <div className="text-3xl font-bold text-green-600">{data?.totals.completed}</div>
-            <div className="text-sm text-neutral-500 uppercase">Completaron</div>
-          </div>
-          <div className="bg-white p-4 rounded shadow text-center">
-            <div className="text-3xl font-bold text-red-600">{data?.totals.incomplete ?? 0}</div>
-            <div className="text-sm text-neutral-500 uppercase">No completaron</div>
-          </div>
-        </div>
+    {(data.incomplete?.length ?? 0) > 0 && <PlayerGroup title="No completaron" players={data.incomplete} onDetail={setSelectedSessionId} />}
+    {(data.active?.length ?? 0) > 0 && <PlayerGroup title="En juego" players={data.active} onDetail={setSelectedSessionId} />}
+    {(data.invalidated?.length ?? 0) > 0 && <section className="mb-8 rounded border border-red-200 bg-red-50 p-4"><h2 className="font-black">Participaciones invalidadas · {data.invalidated.length}</h2><p className="mt-1 text-xs">Se conservan, pero no integran KPIs, ranking ni estadísticas competitivas.</p>{data.invalidated.map((player: any) => <div key={player.id} className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-red-200 pt-2 text-sm"><span>{player.playerName} · {player.invalidationReason}</span><button onClick={() => setSessionToRelease(player.id)} className="rounded border bg-white px-2 py-1">Rehabilitar participación</button></div>)}</section>}
 
-        <h2 className="text-xl font-bold mb-4">Ranking (Completados)</h2>
-        <div className="bg-white rounded shadow overflow-x-auto mb-8">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              
-              <tr className="bg-neutral-50 border-b border-neutral-200 text-xs text-neutral-600 uppercase">
-                <th className="p-3 font-bold">Pos</th>
-                <th className="p-3 font-bold">Jugador / Equipo</th>
-                <th className="p-3 font-bold">Identificación</th>
-                <th className="p-3 font-bold text-right">Puntaje</th>
-                <th className="p-3 font-bold text-right">Errores</th>
-                <th className="p-3 font-bold text-right">Pistas</th>
-                <th className="p-3 font-bold text-right">Tiempo</th>
-                <th className="p-3 font-bold text-right">Acciones</th>
-              </tr>
+    {(data.questions || data.checkpoints) && <section className="mb-8 rounded bg-white shadow-sm"><button type="button" aria-expanded={showTechnical} onClick={() => setShowTechnical(value => !value)} className="flex w-full justify-between p-4 text-left font-black"><span>Preguntas y checkpoints</span><span>{showTechnical ? 'Ocultar' : 'Ver análisis'}</span></button>{showTechnical && <div className="border-t p-4"><h3 className="font-black">Por pregunta</h3><div className="mt-2 grid gap-2">{data.questions.map((question: any) => <div key={question.questionId} className="rounded border p-3 text-sm"><p className="font-bold">{question.question}</p><p className="text-neutral-500">{question.checkpoint}</p><p className="mt-1">Recibieron: {question.received} · Primera correcta: {question.firstAttemptCorrect} ({question.firstAttemptCorrectRate}%) · Errores: {question.wrongAttempts} · Pistas: {question.hintUses} ({question.hintUseRate}%)</p></div>)}</div><h3 className="mt-5 font-black">Por checkpoint</h3><div className="mt-2 grid gap-2 sm:grid-cols-2">{data.checkpoints.map((checkpoint: any) => <div key={checkpoint.checkpointId} className="rounded border p-3 text-sm"><p className="font-bold">{checkpoint.checkpoint}</p><p>Alcanzaron: {checkpoint.reached} · Errores: {checkpoint.wrongAttempts} ({checkpoint.averageWrongAttempts} prom.) · Pistas: {checkpoint.hintUses}</p></div>)}</div><p className="mt-4 text-xs text-neutral-500">{data.semantics?.checkpointReach}</p></div>}</section>}
 
-            </thead>
-            <tbody>
-              {data?.ranking.length === 0 ? (
-                <tr><td colSpan={5} className="p-4 text-center text-neutral-500">Nadie ha terminado aún</td></tr>
-              ) : (
-                
-                data?.ranking.map((p: any) => (
-                  <tr key={p.id} className={`border-b border-neutral-100 ${p.invalidatedAt ? 'bg-red-50 opacity-75' : ''}`}>
-                    <td className="p-3 font-bold text-neutral-500">
-                      {p.invalidatedAt ? (
-                        <span className="text-red-500 text-xs">ANULADO</span>
-                      ) : p.isTied ? (
-                        <span className="text-blue-500 text-xs">#{p.rank} · EMPATE</span>
-                      ) : (
-                        `#${p.rank}`
-                      )}
-                    </td>
-                    <td className="p-3 font-medium">
-                      {p.playerName}
-                      {p.needsReview && !p.invalidatedAt && <span className="ml-2 inline-block bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded font-bold">Rápido</span>}
-                      {p.invalidatedAt && <div className="text-xs text-red-600 mt-1">Motivo: {p.invalidationReason}</div>}
-                    </td>
-                    <td className="p-3 font-mono text-sm text-neutral-600">
-                      {p.identifierType} {p.identifierSuffix}
-                    </td>
-                    <td className="p-3 text-right font-bold text-orange-600">{p.score}</td>
-                    <td className="p-3 text-right text-red-500">{p.wrongCount}</td>
-                    <td className="p-3 text-right">{p.hintsUsed}</td>
-                    <td className="p-3 text-right text-neutral-500 font-mono text-sm whitespace-nowrap">FINALIZADO · {formatElapsed(p.durationSec)} total</td>
-                    <td className="p-3 text-right">
-                      <button onClick={() => setSelectedSessionId(p.id)} className="mr-2 text-xs bg-blue-100 text-blue-800 hover:bg-blue-200 px-2 py-1 rounded">Ver detalle</button>
-                      {p.invalidatedAt ? (
-                        <button onClick={() => setParticipantToRelease(p.participantId)} className="text-xs bg-neutral-200 hover:bg-neutral-300 px-2 py-1 rounded">Rehabilitar</button>
-                      ) : (
-                        <button onClick={() => setParticipantToInvalidate(p.participantId)} className="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded">Invalidar</button>
-                      )}
-                    </td>
-                  </tr>
-                ))
+    {Array.isArray(data.feedback) && <section className="mb-8 rounded bg-white p-4 shadow-sm"><h2 className="font-black">Opiniones de estudiantes</h2>{data.feedback.length === 0 ? <p className="mt-2 text-sm text-neutral-600">No se registraron opiniones durante esta edición.</p> : null}</section>}
 
-              )}
-            </tbody>
-          </table>
-        </div>
+    {sessionToInvalidate && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><form className="w-full max-w-md rounded bg-white p-5" onSubmit={event => { event.preventDefault(); void handleInvalidate() }}><h2 className="font-black">Invalidar participación</h2><p className="mt-2 text-sm">Solo queda fuera esta participación de esta edición; la identidad puede jugar ediciones futuras.</p><textarea required value={invalidationReason} onChange={event => setInvalidationReason(event.target.value)} className="mt-3 w-full rounded border p-2" placeholder="Motivo" /><div className="mt-3 flex gap-2"><button className="rounded bg-red-700 px-3 py-2 text-white">Confirmar</button><button type="button" onClick={() => setSessionToInvalidate(null)} className="rounded border px-3 py-2">Cancelar</button></div></form></div>}
+    {sessionToRelease && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-md rounded bg-white p-5"><h2 className="font-black">Rehabilitar participación</h2><div className="mt-3 flex gap-2"><button onClick={() => void handleRelease()} className="rounded bg-neutral-900 px-3 py-2 text-white">Confirmar</button><button onClick={() => setSessionToRelease(null)} className="rounded border px-3 py-2">Cancelar</button></div></div></div>}
+    {selectedSessionId !== null && <PlayerDetailDrawer sessionId={selectedSessionId} onClose={() => setSelectedSessionId(null)} />}
+  </div></div>
+}
 
-        {data.invalidated?.length > 0 && <div className="bg-white rounded shadow p-4 mt-8"><h2 className="font-bold mb-3">Participaciones invalidadas</h2>{data.invalidated.map((p: any) => <div key={p.id} className="flex justify-between border-t py-2 text-sm"><span>{p.playerName} — {p.identifierType} {p.identifierSuffix}</span><button onClick={() => setParticipantToRelease(p.participantId)} className="border px-2 py-1 rounded">Rehabilitar identificación</button></div>)}</div>}
-        {participantToInvalidate && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"><form className="bg-white p-5 rounded w-full max-w-md" onSubmit={(e) => { e.preventDefault(); void handleInvalidar() }}><h2 className="font-bold">Invalidar participación</h2><p className="text-sm mt-2">Queda fuera del ranking y se conserva el historial.</p><textarea required className="w-full border rounded p-2 mt-3" value={invalidationReason} onChange={e => setInvalidationReason(e.target.value)} placeholder="Motivo de invalidación" /><div className="flex gap-2 mt-3"><button className="bg-red-700 text-white px-3 py-2 rounded">Confirmar</button><button type="button" className="border px-3 py-2 rounded" onClick={() => setParticipantToInvalidate(null)}>Cancelar</button></div></form></div>}
-        {participantToRelease && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"><div className="bg-white p-5 rounded w-full max-w-md"><h2 className="font-bold">Rehabilitar identificación</h2><p className="text-sm mt-2">La identificación podrá registrarse nuevamente.</p><div className="flex gap-2 mt-3"><button className="bg-neutral-800 text-white px-3 py-2 rounded" onClick={() => void handleRehabilitar()}>Confirmar</button><button className="border px-3 py-2 rounded" onClick={() => setParticipantToRelease(null)}>Cancelar</button></div></div></div>}
-
-        <h2 className="text-xl font-bold mb-4">{data.effectiveStatus === 'ENDED' ? 'No completaron' : 'En juego (activos)'}</h2>
-        <div className="bg-white rounded shadow overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-neutral-50 border-b border-neutral-200">
-                <th className="p-3 font-semibold">Equipo/Jugador</th>
-                <th className="p-3 font-semibold text-center">Progreso</th>
-                <th className="p-3 font-semibold">Estado</th>
-                <th className="p-3 font-semibold text-right">Errores</th>
-                <th className="p-3 font-semibold text-right">Inicio</th>
-                <th className="p-3 font-semibold text-right">Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.effectiveStatus === 'ENDED' ? data.incomplete : data.active).length === 0 ? (
-                <tr><td colSpan={6} className="p-4 text-center text-neutral-500">{data.effectiveStatus === 'ENDED' ? 'No hay participantes sin completar' : 'No hay sesiones activas'}</td></tr>
-              ) : (
-                (data.effectiveStatus === 'ENDED' ? data.incomplete : data.active).map((p: any) => (
-                  <tr key={p.id} className="border-b border-neutral-100">
-                    <td className="p-3 font-medium">{p.playerName}</td>
-                    <td className="p-3 text-center">
-                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">Paso {Math.min(p.currentStep, p.totalSteps)} / {p.totalSteps}</span>
-                    </td>
-                    <td className="p-3 text-xs font-bold whitespace-nowrap">
-                      {p.resultStatus === 'INCOMPLETE' ? 'NO COMPLETÓ' : <>{p.currentState} · <span className="font-mono">{formatElapsed(elapsedSeconds(p.stateSince, now))}</span></>}
-                      {p.pendingReview && <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">REVISIÓN</span>}
-                    </td>
-                    <td className="p-3 text-right text-red-500">{p.wrongCount}</td>
-                    <td className="p-3 text-right text-neutral-500 text-sm whitespace-nowrap">{formatEventTime(p.startedAt)}</td>
-                    <td className="p-3 text-right"><button type="button" className="rounded bg-blue-100 px-2 py-1 text-xs font-bold text-blue-800 hover:bg-blue-200" onClick={() => setSelectedSessionId(p.id)}>Ver detalle</button></td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {selectedSessionId !== null && <PlayerDetailDrawer sessionId={selectedSessionId} onClose={() => setSelectedSessionId(null)} />}
-      </div>
-    </div>
-  )
+function PlayerGroup({ title, players, onDetail }: { title: string; players: any[]; onDetail: (id: number) => void }) {
+  return <section className="mb-8"><h2 className="mb-3 text-xl font-black">{title}</h2><div className="grid gap-2 sm:grid-cols-2">{players.map(player => <div key={player.id} className="rounded bg-white p-4"><p className="font-bold">{player.playerName}</p><p className="text-sm text-neutral-500">{player.career || 'Sin carrera'} · Paso {Math.min(player.currentStep, player.totalSteps)} / {player.totalSteps}</p>{player.currentState && <p className="mt-1 text-xs font-bold">{player.currentState}</p>}<button onClick={() => onDetail(player.id)} className="mt-2 rounded bg-blue-100 px-2 py-1 text-xs font-bold text-blue-800">Ver detalle</button></div>)}</div></section>
 }

@@ -67,7 +67,8 @@ supportRoutes.get('/status', async (c) => {
   if (!session) return c.json({ requests: [] })
   const reviews = await c.env.DB.prepare('SELECT id, challenge_id, answer_attempt_id, status, score_at_request, awarded_correct, reversed_wrong, created_at, resolved_at FROM answer_review_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all<any>()
   const support = await c.env.DB.prepare('SELECT id, category, status, created_at FROM support_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all()
-  const settings = await c.env.DB.prepare('SELECT points_per_correct, wrong_answer_penalty FROM event_settings WHERE id=1').first<any>()
+  const settings = await c.env.DB.prepare(`SELECT er.points_per_correct, er.wrong_answer_penalty
+    FROM sessions s JOIN event_runs er ON er.id = s.event_run_id WHERE s.id = ?`).bind(session.id).first<any>()
   return c.json({ reviews: reviews.results.map((review: any) => ({
     ...review,
     scoreCorrection: calculateReviewScoreCorrection(review, settings),

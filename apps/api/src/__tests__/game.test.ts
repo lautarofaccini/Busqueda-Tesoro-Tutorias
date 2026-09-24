@@ -98,6 +98,7 @@ function applyMigrationsAndSeed() {
     `npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../seed/test_seed.sql`,
     opts
   )
+  execSync(`npx wrangler d1 execute busqueda-tesoro-db --local --persist-to="${TEST_PERSIST}" --file=../../migrations/0011_event_runs.sql`, opts)
 }
 
 beforeAll(async () => {
@@ -118,6 +119,7 @@ beforeAll(async () => {
         },
       ],
     },
+    vars: { PARTICIPANT_ID_SECRET: 'test_secret' },
   })
 }, 60_000)
 
@@ -152,11 +154,11 @@ async function scan(token: string, cookieHeader?: string) {
 }
 
 async function startSession(playerName: string, startToken: string) {
-    let suffix = Math.floor(Math.random() * 10000).toString();
+    const identifierValue = String(10_000_000 + Math.floor(Math.random() * 89_999_999)).slice(0, 8)
     const res = await worker.fetch('/api/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName, lastName: 'Test', career: 'ISI', identifierType: 'LEGAJO', identifierValue: playerName + suffix, startToken }),
+      body: JSON.stringify({ playerName, lastName: 'Test', career: 'ISI', identifierType: 'DNI', identifierValue, startToken }),
     });
     if (res.status >= 400) {
       console.error("START SESSION FAILED", await res.clone().text());

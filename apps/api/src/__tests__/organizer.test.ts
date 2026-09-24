@@ -5,9 +5,6 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rmSync } from 'node:fs'
-import { generateTotp } from '../lib/totp.js'
-
-const TOTP_SECRET = 'JBSWY3DPEHPK3PXP'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const API_ROOT = join(__dirname, '..', '..') 
@@ -30,7 +27,8 @@ function applyMigrationsAndSeed() {
     'migrations/0009_player_support_manual_review.sql',
     'migrations/0010_remove_session_route_dependency.sql',
     'seed/test_seed.sql',
-    'seed/organizer_observability_test.sql'
+    'seed/organizer_observability_test.sql',
+    'migrations/0011_event_runs.sql'
   ]
 
   for (const file of migrations) {
@@ -49,7 +47,8 @@ beforeAll(async () => {
     persistTo: TEST_PERSIST,
     vars: {
       ORGANIZER_SECRET: 'super_secret',
-      ORGANIZER_TOTP_SECRET: TOTP_SECRET,
+      ADMIN_USERNAME: 'adminTutores21',
+      ADMIN_PASSWORD: 'strong_test_password',
       PARTICIPANT_ID_SECRET: 'test_secret'
     }
   })
@@ -71,7 +70,7 @@ describe('Organizer API', () => {
     const loginRes = await worker.fetch('/api/organizer/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
+      body: JSON.stringify({ username: 'adminTutores21', password: 'strong_test_password' })
     })
     expect(loginRes.status).toBe(200)
     const cookie = loginRes.headers.get('set-cookie')?.split(';')[0]
@@ -90,7 +89,7 @@ describe('Organizer API', () => {
   it('returns read-only server-authoritative player detail for active and completed sessions', async () => {
     const loginRes = await worker.fetch('/api/organizer/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
+      body: JSON.stringify({ username: 'adminTutores21', password: 'strong_test_password' })
     })
     const cookie = loginRes.headers.get('set-cookie')!.split(';')[0]!
 
@@ -116,7 +115,7 @@ describe('Organizer API', () => {
     expect((await worker.fetch('/api/organizer/players/201')).status).toBe(401)
     const loginRes = await worker.fetch('/api/organizer/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
+      body: JSON.stringify({ username: 'adminTutores21', password: 'strong_test_password' })
     })
     const cookie = loginRes.headers.get('set-cookie')!.split(';')[0]!
     const first = await (await worker.fetch('/api/organizer/players/201', { headers: { cookie } })).json()
@@ -139,7 +138,7 @@ describe('Organizer API', () => {
     const loginRes = await worker.fetch('/api/organizer/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'super_secret', totp: await generateTotp(TOTP_SECRET) })
+      body: JSON.stringify({ username: 'adminTutores21', password: 'strong_test_password' })
     })
     expect(loginRes.status).toBe(200)
 
@@ -159,18 +158,16 @@ describe('Organizer API', () => {
     expect(data.status).toBe('LIVE')
   })
 
-  it('requires both password and a well-formed TOTP code, and logs out', async () => {
-    const validCode = await generateTotp(TOTP_SECRET)
+  it('requires the configured username and password, and logs out', async () => {
     for (const body of [
-      { passphrase: 'wrong', totp: validCode },
-      { passphrase: 'super_secret', totp: '000000' },
-      { passphrase: 'super_secret', totp: 'not-a-code' },
+      { username: 'wrong', password: 'strong_test_password' },
+      { username: 'adminTutores21', password: 'wrong' },
     ]) {
       const response = await worker.fetch('/api/organizer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       expect(response.status).toBe(401)
-      expect(JSON.stringify(await response.json())).not.toContain(TOTP_SECRET)
+      expect(JSON.stringify(await response.json())).not.toContain('strong_test_password')
     }
-    const login = await worker.fetch('/api/organizer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: 'super_secret', totp: validCode }) })
+    const login = await worker.fetch('/api/organizer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'adminTutores21', password: 'strong_test_password' }) })
     const cookie = login.headers.get('set-cookie')!.split(';')[0]!
     const logout = await worker.fetch('/api/organizer/logout', { method: 'POST', headers: { cookie } })
     expect(logout.status).toBe(200)

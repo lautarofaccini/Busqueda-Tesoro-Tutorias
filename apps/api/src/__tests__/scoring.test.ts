@@ -6,9 +6,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rmSync } from 'node:fs'
 import { calculateScore } from '../lib/scoring.js'
-import { generateTotp } from '../lib/totp.js'
 
-const TOTP_SECRET = 'JBSWY3DPEHPK3PXP'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const API_ROOT = join(__dirname, '..', '..')
@@ -29,7 +27,8 @@ function applyMigrationsAndSeed() {
     'migrations/0008_production_scoring_and_review.sql',
     'migrations/0009_player_support_manual_review.sql',
     'migrations/0010_remove_session_route_dependency.sql',
-    'seed/test_seed.sql'
+    'seed/test_seed.sql',
+    'migrations/0011_event_runs.sql'
   ]
   for (const file of migrations) {
     execSync(`${wranglerCmd}${join(REPO_ROOT, file)}`, { stdio: 'ignore' })
@@ -59,7 +58,7 @@ async function play(playerName: string, wrongCountA: number, wrongCountB: number
   let res = await worker.fetch('/api/session/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerName, identifierType: 'LEGAJO', identifierValue: playerName + Math.floor(Math.random() * 10000), startToken: TOKEN_START })
+    body: JSON.stringify({ playerName, lastName: 'Test', career: 'ISI', identifierType: 'DNI', identifierValue: String(10_000_000 + Math.floor(Math.random() * 89_999_999)).slice(0, 8), startToken: TOKEN_START })
   })
   const cookie = res.headers.get('set-cookie')?.split(';')[0]!
 
@@ -126,13 +125,13 @@ beforeAll(async () => {
     experimental: { disableExperimentalWarning: true },
     local: true,
     persistTo: TEST_PERSIST,
-    vars: { ORGANIZER_SECRET: 'secret', ORGANIZER_TOTP_SECRET: TOTP_SECRET, PARTICIPANT_ID_SECRET: 'test_secret' }
+    vars: { ORGANIZER_SECRET: 'secret', ADMIN_USERNAME: 'adminTutores21', ADMIN_PASSWORD: 'strong_test_password', PARTICIPANT_ID_SECRET: 'test_secret' }
   })
 
   const loginRes = await worker.fetch('/api/organizer/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ passphrase: 'secret', totp: await generateTotp(TOTP_SECRET) })
+    body: JSON.stringify({ username: 'adminTutores21', password: 'strong_test_password' })
   })
   cookieAuth = loginRes.headers.get('set-cookie')?.split(';')[0]!
 }, 30000)
@@ -157,7 +156,7 @@ describe('Scoring & Ranking Rules', () => {
     await worker.fetch('/api/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName: 'Player D', lastName: 'Test', career: 'ISI', identifierType: 'LEGAJO', identifierValue: 'Player D ' + Math.floor(Math.random() * 10000), startToken: TOKEN_START })
+      body: JSON.stringify({ playerName: 'Player D', lastName: 'Test', career: 'ISI', identifierType: 'DNI', identifierValue: String(10_000_000 + Math.floor(Math.random() * 89_999_999)).slice(0, 8), startToken: TOKEN_START })
     })
 
     // Play one that goes negative to verify floor

@@ -33,4 +33,16 @@ describe('admin closing controls', () => {
     expect(screen.getByText(/Hay 3 jugadores activos/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirmar finalización inmediata' })).toBeInTheDocument()
   })
+
+  it('creates a new edition only after explicit preservation confirmation', async () => {
+    const ended = { ...live, status: 'ENDED', effectiveStatus: 'ENDED', current_event_run_id: 1, activeSessions: 0 }
+    const created = { ...ended, status: 'DRAFT', effectiveStatus: 'DRAFT', current_event_run_id: 2 }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(created), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    render(<EventSettings initialData={ended} onSaved={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Nueva edición' }))
+    expect(screen.getByText('Los participantes, resultados e historial de la edición anterior se conservarán. El contenido y los QR no cambian.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar nueva edición' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/event/runs', expect.objectContaining({ method: 'POST' })))
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ confirmed: true })
+  })
 })

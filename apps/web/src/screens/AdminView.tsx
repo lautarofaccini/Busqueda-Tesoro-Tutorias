@@ -15,8 +15,8 @@ async function downloadSingleQRPdf(checkpoint: any) {
 export function AdminView() {
   const [activeTab, setActiveTab] = useState('resumen')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [passphrase, setPassphrase] = useState('')
-  const [totp, setTotp] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [eventData, setEventData] = useState<any>(null)
@@ -43,7 +43,7 @@ export function AdminView() {
       const res = await fetch('/api/organizer/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase, totp })
+        body: JSON.stringify({ username, password })
       })
       if (res.ok) {
         await checkAuth()
@@ -60,8 +60,8 @@ export function AdminView() {
     await fetch('/api/organizer/logout', { method: 'POST' })
     setIsAuthenticated(false)
     setEventData(null)
-    setPassphrase('')
-    setTotp('')
+    setUsername('')
+    setPassword('')
   }
 
   if (!isAuthenticated) {
@@ -70,27 +70,25 @@ export function AdminView() {
         <form onSubmit={handleLogin} className="bg-white p-6 rounded-lg shadow max-w-sm w-full">
           <h2 className="text-xl font-bold mb-4">Acceso de Administrador</h2>
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-          <label className="block text-sm font-medium mb-1" htmlFor="admin-password">Contraseña</label>
+          <label className="block text-sm font-medium mb-1" htmlFor="admin-username">Usuario</label>
           <input 
-            id="admin-password"
-            type="password" 
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Contraseña"
+            id="admin-username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            placeholder="Usuario"
             className="w-full border rounded p-2 mb-4"
             required
           />
-          <label className="block text-sm font-medium mb-1" htmlFor="admin-totp">Código de autenticación</label>
+          <label className="block text-sm font-medium mb-1" htmlFor="admin-password">Contraseña</label>
           <input
-            id="admin-totp"
-            type="text"
-            value={totp}
-            onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="Código de autenticación"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{6}"
-            maxLength={6}
+            id="admin-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            placeholder="Contraseña"
             className="w-full border rounded p-2 mb-4"
             required
           />
@@ -147,7 +145,7 @@ export function EventSettings({ initialData, onSaved }: { initialData: any, onSa
   const [data, setData] = useState(initialData)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
-  const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmNewEdition, setConfirmNewEdition] = useState(false)
   const [confirmClosing, setConfirmClosing] = useState(false)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [preflightIssues, setPreflightIssues] = useState<any[]>([])
@@ -206,6 +204,7 @@ export function EventSettings({ initialData, onSaved }: { initialData: any, onSa
   return (
     <div className="max-w-2xl bg-white p-6 rounded shadow">
       <h2 className="text-2xl font-bold mb-6">Configuración del Evento</h2>
+      {data.current_event_run_id && <p className="mb-4 text-sm text-neutral-600">Edición actual: <strong>#{data.current_event_run_id}</strong></p>}
       {preflightIssues.length > 0 && <div className="mb-6 rounded border border-red-300 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">NO SE PUEDE INICIAR EL EVENTO</p><ul className="mt-2 list-disc pl-5">{preflightIssues.map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}</li>)}</ul></div>}
       
       <div className="mb-6 border-b pb-6">
@@ -249,16 +248,15 @@ export function EventSettings({ initialData, onSaved }: { initialData: any, onSa
           {saving ? 'Guardando...' : 'Guardar Cambios'}
         </button>
 
-        <button onClick={() => setConfirmReset(true)}
-          className="bg-red-600 text-white px-6 py-2 rounded"
-        >
-          REINICIAR EVENTO
-        </button>
+        {data.effectiveStatus === 'ENDED' && <button onClick={() => setConfirmNewEdition(true)}
+          className="bg-blue-700 text-white px-6 py-2 rounded font-bold"
+        >Nueva edición</button>}
       </div>
       {message && <p className="mt-4 text-sm text-neutral-600" role="status">{message}</p>}
-      {confirmReset && <div className="mt-5 border border-red-200 bg-red-50 p-4 rounded">
-        <p className="text-sm mb-3">Se eliminarán sesiones, intentos, escaneos, asignaciones y participaciones. El contenido y los QR se conservan.</p>
-        <div className="flex gap-3"><button className="bg-red-700 text-white px-4 py-2 rounded" onClick={async () => { const res = await fetch('/api/admin/reset', { method: 'POST' }); if (res.ok) { const next = { ...data, status: 'DRAFT' }; setData(next); onSaved(next); setMessage('Evento reiniciado en BORRADOR.'); setConfirmReset(false) } }}>Confirmar reinicio</button><button className="border px-4 py-2 rounded" onClick={() => setConfirmReset(false)}>Cancelar</button></div>
+      {confirmNewEdition && <div className="mt-5 border border-blue-200 bg-blue-50 p-4 rounded">
+        <p className="font-bold">Se creará una nueva edición del evento.</p>
+        <p className="mt-1 text-sm">Los participantes, resultados e historial de la edición anterior se conservarán. El contenido y los QR no cambian.</p>
+        <div className="mt-3 flex flex-wrap gap-3"><button disabled={saving} className="bg-blue-700 text-white px-4 py-2 rounded font-bold" onClick={async () => { setSaving(true); const res = await fetch('/api/admin/event/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: true }) }); setSaving(false); if (res.ok) { const next = await res.json(); setData(next); onSaved(next); setMessage('Nueva edición creada en BORRADOR.'); setConfirmNewEdition(false) } else { setMessage('No se pudo crear la nueva edición.') } }}>Confirmar nueva edición</button><button className="border px-4 py-2 rounded" onClick={() => setConfirmNewEdition(false)}>Cancelar</button></div>
       </div>}
     </div>
   )

@@ -114,4 +114,25 @@ describe('player detail drawer', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+
+  it('requires a reason and explicit preview before applying a score correction', async () => {
+    const auditable = { ...completedDetail, score: 540, auditStatus: 'PENDING', scoreBreakdown: { scoreBeforeApprovedReviews: 530, approvedReviewCorrection: 10, originalCalculatedScore: 540, manualAdjustmentTotal: 0, finalScore: 540 }, scoreAdjustments: [], auditSuggestions: [{ code: 'PENDING_REVIEW', label: 'Hay una revisión pendiente.' }] }
+    const corrected = { ...auditable, score: 550, scoreBreakdown: { scoreBeforeApprovedReviews: 530, approvedReviewCorrection: 10, originalCalculatedScore: 540, manualAdjustmentTotal: 10, finalScore: 550 }, scoreAdjustments: [{ id: 1, amount: 10, reason: 'Penalidad incorrecta verificada', createdAt: '2026-09-23 15:00:00', createdBy: 'adminTutores21', relatedAttemptId: null, compensatesAdjustmentId: null }] }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(auditable), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, score: 550 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(corrected), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PlayerDetailDrawer sessionId={201} onClose={() => undefined} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Corregir puntaje' }))
+    fireEvent.click(screen.getByRole('button', { name: '+10' }))
+    fireEvent.change(screen.getByLabelText('Motivo obligatorio'), { target: { value: 'Penalidad incorrecta verificada' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar corrección' }))
+    expect(screen.getByText('El puntaje de Ana Activa cambiará de 540 a 550.')).toBeInTheDocument()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Confirmar corrección' })) })
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/organizer/players/201/score-adjustments', expect.objectContaining({ method: 'POST' }))
+    await act(async () => {})
+    expect(screen.getByText((_, element) => element?.tagName === 'P' && element.textContent?.includes('Penalidad incorrecta verificada') === true)).toBeInTheDocument()
+  })
 })

@@ -7,7 +7,6 @@ const env = {
   ASSISTANCE_USERNAME: 'tutor',
   ASSISTANCE_PASSWORD: 'clave-segura',
   ORGANIZER_SECRET: 'organizer-only',
-  ORGANIZER_TOTP_SECRET: 'JBSWY3DPEHPK3PXP',
   PARTICIPANT_ID_SECRET: 'participant-only',
   ENVIRONMENT: 'production',
   DB: { prepare: () => ({ all: async () => ({ results: [] }) }) } as unknown as D1Database,

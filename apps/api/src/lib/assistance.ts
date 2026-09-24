@@ -8,6 +8,7 @@ export async function getAssistanceFeed(db: D1Database) {
   const reviews = await db.prepare(`
     SELECT r.*, p.display_name, cp.label, ch.question_text, ch.accepted_answers
     FROM answer_review_requests r
+    JOIN sessions s ON s.id = r.session_id AND s.event_run_id = (SELECT current_event_run_id FROM event_settings WHERE id=1)
     JOIN participants p ON p.id = r.participant_id
     JOIN checkpoints cp ON cp.id = r.checkpoint_id
     JOIN challenges ch ON ch.id = r.challenge_id
@@ -15,6 +16,7 @@ export async function getAssistanceFeed(db: D1Database) {
   const support = await db.prepare(`
     SELECT r.*, p.display_name, cp.label
     FROM support_requests r
+    JOIN sessions s ON s.id = r.session_id AND s.event_run_id = (SELECT current_event_run_id FROM event_settings WHERE id=1)
     JOIN participants p ON p.id = r.participant_id
     LEFT JOIN checkpoints cp ON cp.id = r.checkpoint_id
   `).all<any>()

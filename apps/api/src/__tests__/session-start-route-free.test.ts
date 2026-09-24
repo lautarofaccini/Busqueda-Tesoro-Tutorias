@@ -27,6 +27,7 @@ describe('route-free session initialization', () => {
       sessionToken: 'server-token',
       playerName: 'Ana Prueba',
       participantId: 4,
+      eventRunId: 1,
     })).resolves.toBe(77)
 
     expect(sql[0]).toContain('INSERT INTO sessions')

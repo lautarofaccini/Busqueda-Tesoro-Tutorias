@@ -42,9 +42,9 @@ function closingDb(options: DbOptions = {}) {
       const statement = {
         bind: (...values: unknown[]) => { args = values; return statement },
         first: async () => {
+          if (sql.includes('FROM sessions WHERE session_token')) return session
           if (sql.includes('FROM event_settings')) return settings
           if (sql.includes('FROM checkpoints WHERE token') || sql.includes('fallback_code')) return checkpoint
-          if (sql.includes('FROM sessions WHERE session_token')) return session
           if (sql.includes('SELECT status FROM sessions WHERE id=')) return { status: session.status }
           if (sql.includes('COUNT(*) as cnt FROM session_steps')) return { cnt: 1 }
           if (sql.includes('FROM session_steps WHERE session_id')) return { id: 1, session_id: 7, position: 1, checkpoint_id: 2, primary_clue: 'Pista de recorrido', secondary_clue: 'Pista extra', instruction: null }
@@ -108,23 +108,25 @@ describe('CLOSING grace lifecycle', () => {
   })
 
   it('preserves updated_at atomically when CLOSING is saved again', async () => {
-    let capturedArgs: unknown[] = []
+    const captured: Array<{ sql: string; args: unknown[] }> = []
     const db = {
       prepare(sql: string) {
-        expect(sql).toBe(EVENT_SETTINGS_UPDATE_SQL)
         const statement = {
-          bind: (...args: unknown[]) => { capturedArgs = args; return statement },
+          bind: (...args: unknown[]) => { captured.push({ sql, args }); return statement },
           run: async () => ({ success: true }),
         }
         return statement
       },
+      batch: async () => [],
     } as unknown as D1Database
     await updateEventSettings(db, {
       status: 'CLOSING', event_name: 'Evento', points_per_correct: 100,
       wrong_answer_penalty: 10, hint_penalty: 5, minimum_expected_completion_minutes: 10,
     })
     expect(EVENT_SETTINGS_UPDATE_SQL).toContain("WHEN status = 'CLOSING' AND ? = 'CLOSING' THEN updated_at")
-    expect(capturedArgs.slice(0, 2)).toEqual(['CLOSING', 'CLOSING'])
+    expect(captured[0]?.sql).toBe(EVENT_SETTINGS_UPDATE_SQL)
+    expect(captured[0]?.args.slice(0, 2)).toEqual(['CLOSING', 'CLOSING'])
+    expect(captured[1]?.sql).toContain("closing_at = CASE WHEN status != 'CLOSING'")
   })
 
   it('blocks session creation before any participant/session write', async () => {
