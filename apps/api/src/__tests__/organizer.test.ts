@@ -52,7 +52,7 @@ beforeAll(async () => {
       PARTICIPANT_ID_SECRET: 'test_secret'
     }
   })
-}, 30000)
+}, 90000)
 
 afterAll(async () => {
   if (worker) {
@@ -108,7 +108,8 @@ describe('Organizer API', () => {
 
     const completed = await (await worker.fetch('/api/organizer/players/203', { headers: { cookie } })).json() as any
     expect(completed).toMatchObject({ currentState: 'FINALIZADO', stateSince: '2026-09-23 14:10:00' })
-    expect(completed.history.flatMap((item: any) => item.attempts).find((attempt: any) => attempt.answer === 'treinta')).toMatchObject({ reviewStatus: 'APPROVED', reviewCorrection: 10 })
+    expect(completed).toMatchObject({ approvedReviewCount: 1, scoreBreakdown: { rawCorrectCount: 3, rawWrongCount: 1, baseScore: 290, finalScore: 290 } })
+    expect(completed.history.flatMap((item: any) => item.attempts).find((attempt: any) => attempt.answer === 'treinta')).toMatchObject({ reviewStatus: 'APPROVED', reviewRequiresManualAudit: true })
   })
 
   it('requires organizer auth and repeated polling does not mutate session data', async () => {

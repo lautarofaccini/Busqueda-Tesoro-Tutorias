@@ -2,17 +2,15 @@
 
 This repository is prepared for one same-origin Worker serving static React assets and `/api/*`. Do not run local reset commands against a remote database.
 
-Production contains irreplaceable event history. Never run reset, seed, content import or destructive SQL against it. Migration 0011 and the dependent Worker require a separate explicit approval; the steps below are a manual runbook, not authorization to execute them.
+Production contains irreplaceable event history. Never run reset, seed, content import or destructive SQL against it. Migration 0011 is already applied. The manual-only scoring hotfix requires no database migration; do not rerun migrations for this release.
 
 1. From `apps/api`, run `npx wrangler login` and `npx wrangler whoami`. Confirm `wrangler.toml` still targets Worker `tesoro`, D1 `busqueda-tesoro-tutorias-prod`, and its already configured production UUID. Do not create or replace the database.
-2. Verify a D1 Time Travel recovery point or equivalent backup before any schema change. Record pre-migration counts for `participants`, `sessions`, `answer_attempts`, `scan_events`, `session_challenge_assignments`, `hint_usage`, `question_hint_usage`, `answer_review_requests`, and `support_requests` without printing personal data.
+2. Verify the reported historical counts read-only before release. Do not modify answer attempts, reviews, sessions or adjustments as part of verification.
 3. Configure secrets interactively from `apps/api`: run `npx wrangler secret put ADMIN_USERNAME --env production` and enter `adminTutores21`; run `npx wrangler secret put ADMIN_PASSWORD --env production` and enter a new strong secret password; then verify the existing `ORGANIZER_SECRET` remains configured. Do not reuse the username as the password. Preserve `PARTICIPANT_ID_SECRET`, `ASSISTANCE_USERNAME`, and `ASSISTANCE_PASSWORD`; never print or commit their values.
 4. From the repository root, check out the exact validated commit and run `npm run typecheck`, `npm run build`, and the documented tests. Run `cd apps/api` then `npx wrangler deploy --dry-run --env production`.
-5. With separate migration approval, apply exactly `migrations/0011_event_runs.sql` through Wrangler migrations: `cd apps/api` then `npx wrangler d1 migrations apply busqueda-tesoro-tutorias-prod --remote --env production`. Do not run seed/import/reset commands.
-6. Immediately repeat the read-only row counts. Confirm every existing session has an Edition 1 reference, foreign-key checks are clean, history counts match, and the new adjustment ledger is empty.
-7. Only after those checks pass, deploy Worker and static assets from the same commit: from `apps/api`, run `npx wrangler deploy --env production`.
-8. Verify `https://tesoro.tutorias-frre.workers.dev/api/health`, load `/admin`, log in with username/password, and read Edition 1 totals/detail/ranking. Do not create an edition or correction during this smoke test.
-9. If application verification fails but the additive migration is healthy, redeploy the prior known-good Worker while preserving D1. If migration verification shows data loss or broken references, stop writes and use the recorded Time Travel/backup recovery procedure; do not improvise destructive SQL.
+5. Deploy Worker and static assets from the same commit: from `apps/api`, run `npx wrangler deploy --env production`. Do not run `d1 migrations apply`, seed, import or reset commands.
+6. Verify `https://tesoro.tutorias-frre.workers.dev/api/health`, load `/admin`, log in, and confirm Ema shows base/final score 345 with 14 raw errors before any manual adjustment. Confirm the ranking and career/event aggregates use the same value. Do not create a correction during this smoke test.
+7. If verification fails, redeploy the prior known-good Worker while preserving D1. This hotfix has no schema rollback step because it changes no schema or historical data.
 
 ## Organizer access and LIVE safety
 

@@ -31,8 +31,8 @@ const detail: PlayerDetail = {
     hintUsedAt: '2026-09-23 14:01:00',
     routeHintUsedAt: null,
     attempts: [
-      { answer: 'Libre', correct: false, attemptedAt: '2026-09-23 14:00:10', scoreEffect: -10, reviewStatus: 'REJECTED', reviewRequestedAt: '2026-09-23 14:00:11', reviewResolvedAt: '2026-09-23 14:00:12', reviewCorrection: 0 },
-      { answer: 'Tranquilo', correct: false, attemptedAt: '2026-09-23 14:00:20', scoreEffect: -10, reviewStatus: 'PENDING', reviewRequestedAt: '2026-09-23 14:00:21', reviewResolvedAt: null, reviewCorrection: 0 },
+      { answer: 'Libre', correct: false, attemptedAt: '2026-09-23 14:00:10', scoreEffect: -10, reviewStatus: 'REJECTED', reviewRequestedAt: '2026-09-23 14:00:11', reviewResolvedAt: '2026-09-23 14:00:12' },
+      { answer: 'Tranquilo', correct: false, attemptedAt: '2026-09-23 14:00:20', scoreEffect: -10, reviewStatus: 'PENDING', reviewRequestedAt: '2026-09-23 14:00:21', reviewResolvedAt: null },
     ],
   }],
 }
@@ -116,8 +116,8 @@ describe('player detail drawer', () => {
   })
 
   it('requires a reason and explicit preview before applying a score correction', async () => {
-    const auditable = { ...completedDetail, score: 540, auditStatus: 'PENDING', scoreBreakdown: { scoreBeforeApprovedReviews: 530, approvedReviewCorrection: 10, originalCalculatedScore: 540, manualAdjustmentTotal: 0, finalScore: 540 }, scoreAdjustments: [], auditSuggestions: [{ code: 'PENDING_REVIEW', label: 'Hay una revisión pendiente.' }] }
-    const corrected = { ...auditable, score: 550, scoreBreakdown: { scoreBeforeApprovedReviews: 530, approvedReviewCorrection: 10, originalCalculatedScore: 540, manualAdjustmentTotal: 10, finalScore: 550 }, scoreAdjustments: [{ id: 1, amount: 10, reason: 'Penalidad incorrecta verificada', createdAt: '2026-09-23 15:00:00', createdBy: 'adminTutores21', relatedAttemptId: null, compensatesAdjustmentId: null }] }
+    const auditable = { ...completedDetail, score: 540, auditStatus: 'PENDING', approvedReviewCount: 1, scoreBreakdown: { rawCorrectCount: 6, rawWrongCount: 6, hintCount: 0, baseScore: 540, manualAdjustmentTotal: 0, finalScore: 540 }, scoreAdjustments: [], auditSuggestions: [{ code: 'APPROVED_REVIEW', label: 'Hay una revisión aprobada para inspeccionar.' }], history: completedDetail.history.map(item => ({ ...item, attempts: item.attempts.map((attempt, index) => index === 1 ? { ...attempt, reviewStatus: 'APPROVED' as const, reviewRequiresManualAudit: true } : attempt) })) }
+    const corrected = { ...auditable, score: 550, scoreBreakdown: { rawCorrectCount: 6, rawWrongCount: 6, hintCount: 0, baseScore: 540, manualAdjustmentTotal: 10, finalScore: 550 }, scoreAdjustments: [{ id: 1, amount: 10, reason: 'Penalidad incorrecta verificada', createdAt: '2026-09-23 15:00:00', createdBy: 'adminTutores21', relatedAttemptId: null, compensatesAdjustmentId: null }] }
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(auditable), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, score: 550 }), { status: 201 }))
@@ -125,6 +125,9 @@ describe('player detail drawer', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<PlayerDetailDrawer sessionId={201} onClose={() => undefined} />)
     await act(async () => {})
+    expect(screen.getByText('Revisiones aprobadas: 1 · sin impacto automático en el puntaje.')).toBeInTheDocument()
+    expect(screen.getByText('Revisión: aprobada · requiere auditoría manual del puntaje')).toBeInTheDocument()
+    expect(screen.queryByText(/corrección \+/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Corregir puntaje' }))
     fireEvent.click(screen.getByRole('button', { name: '+10' }))
     fireEvent.change(screen.getByLabelText('Motivo obligatorio'), { target: { value: 'Penalidad incorrecta verificada' } })

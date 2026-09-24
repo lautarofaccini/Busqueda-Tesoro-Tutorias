@@ -9,6 +9,7 @@ import { deriveOperationalPlayerState } from '../lib/game-state.js'
 import { parsePersistedUtc } from '../lib/timestamps.js'
 import { getClosingDeadline, getClosingRemainingSeconds, getEffectiveEventStatus, getSessionResultStatus, isCompetitiveCompletedSession } from '../lib/event-lifecycle.js'
 import { getRunAnalytics, listEventRuns } from '../lib/analytics.js'
+import { calculatePostEventScore } from '../lib/post-event-scoring.js'
 
 
 export const organizerRoutes = new Hono<{ Bindings: Env }>()
@@ -179,11 +180,12 @@ organizerRoutes.get('/results', async (c) => {
     let needsReview = false
     
     if (r.status === 'completed' && r.completedAt) {
-      const correctedCount = Number(r.correctCount) + Number(r.manualCorrectCount ?? 0)
-      const correctedWrong = Math.max(0, Number(r.wrongCount) - Number(r.reversedWrongCount ?? 0))
-      const originalCalculatedScore = Math.max(0, correctedCount * Number(r.pointsPerCorrect)
-        - correctedWrong * Number(r.wrongAnswerPenalty) - Number(r.hintsUsed) * Number(r.hintPenalty))
-      score = Math.max(0, originalCalculatedScore + Number(r.manualAdjustmentTotal ?? 0))
+      score = calculatePostEventScore({
+        rawCorrectCount: Number(r.correctCount), rawWrongCount: Number(r.wrongCount),
+        hintCount: Number(r.hintsUsed), pointsPerCorrect: Number(r.pointsPerCorrect),
+        wrongAnswerPenalty: Number(r.wrongAnswerPenalty), hintPenalty: Number(r.hintPenalty),
+        manualAdjustmentTotal: Number(r.manualAdjustmentTotal ?? 0),
+      }).finalScore
       const start = parsePersistedUtc(r.startedAt)
       const end = parsePersistedUtc(r.completedAt)
       durationSec = Math.floor((end - start) / 1000)
@@ -223,6 +225,7 @@ organizerRoutes.get('/results', async (c) => {
       correctCount: r.correctCount,
       wrongCount: r.wrongCount,
       hintsUsed: r.hintsUsed,
+      approvedReviewCount: Number(r.approvedReviewCount ?? 0),
       manualAdjustmentTotal: Number(r.manualAdjustmentTotal ?? 0),
       manualAdjustmentCount: Number(r.manualAdjustmentCount ?? 0),
       auditStatus: r.auditReviewedAt ? 'REVIEWED' : 'PENDING',

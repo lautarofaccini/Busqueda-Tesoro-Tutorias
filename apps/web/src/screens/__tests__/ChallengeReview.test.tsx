@@ -65,13 +65,13 @@ describe('Challenge review UX', () => {
     expect(await screen.findByText((_, element) => element?.textContent === '¿Todavía no tenés respuesta?Acercate a la oficina de Tutorías y te ayudamos.')).toBeInTheDocument()
   })
 
-  it('shows approval correction and reconciles to the current server state', async () => {
+  it('shows approval as evidence without automatic score impact and reconciles server state', async () => {
     const current = { state: 'ACTIVE' as const, clue: 'Siguiente pista', stepNumber: 2, totalSteps: 5, playerName: 'Ada', score: 100 }
     const onResult = vi.fn()
-    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [{ id: 3, challenge_id: 7, answer_attempt_id: 42, status: 'APPROVED', created_at: new Date().toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 110 }], support: [] })
+    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [{ id: 3, challenge_id: 7, answer_attempt_id: 42, status: 'APPROVED', created_at: new Date().toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 0, requiresManualScoreAudit: true }], support: [] })
     vi.mocked(client.getGameState).mockResolvedValue(current)
     render(<ChallengeScreen state={wrongState} onResult={onResult} />)
-    expect(await screen.findByText('¡Tu respuesta fue aprobada! Puntaje corregido: +110')).toBeInTheDocument()
+    expect(await screen.findByText('Tu respuesta fue aprobada. No modifica el puntaje automáticamente.')).toBeInTheDocument()
     await waitFor(() => expect(onResult).toHaveBeenCalledWith(current), { timeout: 2_000 })
   })
 
@@ -101,19 +101,19 @@ describe('Challenge review UX', () => {
     expect(client.getSupportStatus).toHaveBeenCalledTimes(terminalCallCount)
   })
 
-  it('replaces pending with approval and its authoritative correction', async () => {
+  it('replaces pending with approval without claiming an automatic correction', async () => {
     vi.useFakeTimers()
     const pending = { id: 3, challenge_id: 7, answer_attempt_id: 42, status: 'PENDING' as const, created_at: new Date().toISOString(), scoreCorrection: 0 }
     vi.mocked(client.getSupportStatus)
       .mockResolvedValueOnce({ reviews: [pending], support: [] })
-      .mockResolvedValue({ reviews: [{ ...pending, status: 'APPROVED', resolved_at: new Date().toISOString(), scoreCorrection: 10 }], support: [] })
+      .mockResolvedValue({ reviews: [{ ...pending, status: 'APPROVED', resolved_at: new Date().toISOString(), scoreCorrection: 0, requiresManualScoreAudit: true }], support: [] })
     vi.mocked(client.getGameState).mockResolvedValue({ state: 'ACTIVE', clue: 'Siguiente', stepNumber: 2, totalSteps: 5, playerName: 'Ada', score: 100 })
     render(<ChallengeScreen state={wrongState} onResult={vi.fn()} />)
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
     expect(screen.getByText('Respuesta en evaluación')).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
     expect(screen.queryByText('Respuesta en evaluación')).not.toBeInTheDocument()
-    expect(screen.getByText('¡Tu respuesta fue aprobada! Puntaje corregido: +10')).toBeInTheDocument()
+    expect(screen.getByText('Tu respuesta fue aprobada. No modifica el puntaje automáticamente.')).toBeInTheDocument()
   })
 
   it('isolates a new attempt from an older terminal review', async () => {

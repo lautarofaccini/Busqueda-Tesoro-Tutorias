@@ -89,7 +89,7 @@ export function GameScreen() {
           setReviewNotice({
             reviewId: latestTerminal.id,
             text: latestTerminal.status === 'APPROVED'
-              ? `¡Tu respuesta fue aprobada! Puntaje corregido: +${latestTerminal.scoreCorrection}`
+              ? 'Tu respuesta fue aprobada. No modifica el puntaje automáticamente.'
               : 'Tu respuesta fue revisada y no fue aceptada.',
           })
           if (!reconciledReviewIds.current.has(latestTerminal.id)) {

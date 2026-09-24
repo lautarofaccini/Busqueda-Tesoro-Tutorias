@@ -81,7 +81,7 @@ export async function submitSupport(category: 'QR_SCAN' | 'QR_DAMAGED' | 'OTHER'
 export async function submitAnswerReview(attemptId: number | undefined) {
   return apiFetch<{ success: boolean } | Extract<GameState, { state: 'CLOSING_EXPIRED' }>>('/api/support/answer-reviews', { method: 'POST', body: JSON.stringify({ attemptId }) })
 }
-export interface PlayerReviewStatus { id: number; challenge_id: number; answer_attempt_id: number; status: 'PENDING' | 'APPROVED' | 'REJECTED'; created_at: string; resolved_at?: string | null; scoreCorrection: number }
+export interface PlayerReviewStatus { id: number; challenge_id: number; answer_attempt_id: number; status: 'PENDING' | 'APPROVED' | 'REJECTED'; created_at: string; resolved_at?: string | null; scoreCorrection: number; requiresManualScoreAudit?: boolean }
 export interface PlayerSupportStatus { id: number; category: 'QR_SCAN' | 'QR_DAMAGED' | 'OTHER'; status: 'PENDING' | 'RESOLVED'; created_at: string }
 export async function getSupportStatus() {
   return apiFetch<{ reviews: PlayerReviewStatus[]; support: PlayerSupportStatus[] }>('/api/support/status')

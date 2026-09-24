@@ -10,15 +10,6 @@ import { isClosingGraceActive } from '../lib/event-lifecycle.js'
 
 export const supportRoutes = new Hono<{ Bindings: Env }>()
 
-export function calculateReviewScoreCorrection(
-  review: { status: string; awarded_correct?: number | null; reversed_wrong?: number | null },
-  settings?: { points_per_correct?: number | null; wrong_answer_penalty?: number | null } | null,
-) {
-  if (review.status !== 'APPROVED') return 0
-  return Number(review.awarded_correct || 0) * Number(settings?.points_per_correct ?? 100)
-    + Number(review.reversed_wrong || 0) * Number(settings?.wrong_answer_penalty ?? 10)
-}
-
 async function currentSession(c: any) {
   const token = getSessionToken(c.req.header('cookie') ?? null)
   return token ? getAnySession(c.env.DB, token) : null
@@ -67,10 +58,11 @@ supportRoutes.get('/status', async (c) => {
   if (!session) return c.json({ requests: [] })
   const reviews = await c.env.DB.prepare('SELECT id, challenge_id, answer_attempt_id, status, score_at_request, awarded_correct, reversed_wrong, created_at, resolved_at FROM answer_review_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all<any>()
   const support = await c.env.DB.prepare('SELECT id, category, status, created_at FROM support_requests WHERE session_id = ? ORDER BY id DESC').bind(session.id).all()
-  const settings = await c.env.DB.prepare(`SELECT er.points_per_correct, er.wrong_answer_penalty
-    FROM sessions s JOIN event_runs er ON er.id = s.event_run_id WHERE s.id = ?`).bind(session.id).first<any>()
   return c.json({ reviews: reviews.results.map((review: any) => ({
     ...review,
-    scoreCorrection: calculateReviewScoreCorrection(review, settings),
+    // Kept at zero for compatibility with already cached clients. Review fields
+    // remain evidence/progression metadata and never alter authoritative score.
+    scoreCorrection: 0,
+    requiresManualScoreAudit: review.status === 'APPROVED',
   })), support: support.results })
 })

@@ -81,11 +81,16 @@ describe('event editions and historical analytics', () => {
     const analytics = await (await worker.fetch('/api/organizer/runs/1/analytics', { headers: { cookie } })).json() as any
     expect(analytics.totals).toMatchObject({ all: 3, valid: 2, completed: 1, incomplete: 1, invalidated: 1, completionRate: 50 })
     expect(analytics.ranking).toHaveLength(1)
-    expect(analytics.ranking[0]).toMatchObject({ id: 203, score: 300 })
+    expect(analytics.ranking[0]).toMatchObject({ id: 203, score: 290, wrongCount: 1, approvedReviewCount: 1 })
     expect(analytics.questions.find((question: any) => question.questionId === 1)).toMatchObject({ received: 2, wrongAttempts: 2, hintUses: 1 })
 
     const detail = await (await worker.fetch('/api/organizer/players/203', { headers: { cookie } })).json() as any
     expect(detail.history.flatMap((item: any) => item.attempts)).toHaveLength(4)
+    expect(detail).toMatchObject({ approvedReviewCount: 1, errors: 1, scoreBreakdown: { rawCorrectCount: 3, rawWrongCount: 1, baseScore: 290, finalScore: 290 } })
+    const supportStatus = await (await worker.fetch('/api/support/status', { headers: { cookie: 'gst=session-203' } })).json() as any
+    expect(supportStatus.reviews.find((review: any) => review.status === 'APPROVED')).toMatchObject({
+      awarded_correct: 0, reversed_wrong: 1, scoreCorrection: 0, requiresManualScoreAudit: true,
+    })
   })
 
   it('requires authentication and repeated historical reads have no side effects', async () => {
@@ -102,20 +107,23 @@ describe('event editions and historical analytics', () => {
 
     const created = await worker.fetch(endpoint, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(correction) })
     expect(created.status).toBe(201)
-    expect(await created.json()).toMatchObject({ score: 310, scoreBreakdown: { originalCalculatedScore: 300, manualAdjustmentTotal: 10, finalScore: 310 } })
+    expect(await created.json()).toMatchObject({ score: 300, scoreBreakdown: { baseScore: 290, manualAdjustmentTotal: 10, finalScore: 300 } })
     const repeated = await worker.fetch(endpoint, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(correction) })
     expect(repeated.status).toBe(200)
     expect(await repeated.json()).toMatchObject({ idempotent: true })
 
     const negative = await worker.fetch(endpoint, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: -5, reason: 'Compensación negativa documentada para prueba', idempotencyKey: 'score-test-203-negative-1' }) })
     expect(negative.status).toBe(201)
+    const positiveFive = await worker.fetch(endpoint, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: 5, reason: 'Ajuste positivo explícito para prueba', idempotencyKey: 'score-test-203-positive-5' }) })
+    expect(positiveFive.status).toBe(201)
+    const negativeTen = await worker.fetch(endpoint, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: -10, reason: 'Ajuste negativo explícito para prueba', idempotencyKey: 'score-test-203-negative-10' }) })
+    expect(negativeTen.status).toBe(201)
     const detail = await (await worker.fetch('/api/organizer/players/203', { headers: { cookie } })).json() as any
-    expect(detail).toMatchObject({ score: 305, scoreBreakdown: { manualAdjustmentTotal: 5, finalScore: 305 }, auditStatus: 'PENDING' })
-    expect(detail.scoreAdjustments).toHaveLength(2)
-
+    expect(detail).toMatchObject({ score: 290, scoreBreakdown: { baseScore: 290, manualAdjustmentTotal: 0, finalScore: 290 }, auditStatus: 'PENDING' })
     const analytics = await (await worker.fetch('/api/organizer/runs/1/analytics', { headers: { cookie } })).json() as any
-    expect(analytics.ranking[0]).toMatchObject({ id: 203, score: 305, manualAdjustmentTotal: 5, manualAdjustmentCount: 2 })
-    expect(analytics.careers.find((career: any) => career.career === 'IEM')).toMatchObject({ totalScore: 305, averageScore: 305 })
+    expect(detail.scoreAdjustments).toHaveLength(4)
+    expect(analytics.ranking[0]).toMatchObject({ id: 203, score: 290, wrongCount: 1, manualAdjustmentTotal: 0, manualAdjustmentCount: 4 })
+    expect(analytics.careers.find((career: any) => career.career === 'IEM')).toMatchObject({ totalScore: 290, averageScore: 290 })
 
     const reviewed = await worker.fetch('/api/organizer/players/203/audit-status', { method: 'PUT', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: true }) })
     expect(await reviewed.json()).toMatchObject({ auditStatus: 'REVIEWED' })
@@ -149,7 +157,7 @@ describe('event editions and historical analytics', () => {
     const after = await (await worker.fetch('/api/organizer/runs/1/analytics', { headers: { cookie } })).json() as any
     expect(after.totals).toEqual(before.totals)
     expect(after.ranking).toEqual(before.ranking)
-    expect(after.ranking[0].score).toBe(305)
+    expect(after.ranking[0].score).toBe(290)
     const run2 = await (await worker.fetch('/api/organizer/runs/2/analytics', { headers: { cookie } })).json() as any
     expect(run2.totals.all).toBe(1)
   })

@@ -114,7 +114,7 @@
 
 **Append-only manual score correction ledger**
 - *Reason:* Historical answer attempts and review decisions must remain truthful while organizers need to correct demonstrably unfair scoring outcomes.
-- *Decision:* `score_adjustments` accepts only +10, +5, -10, or -5 entries with a required reason, organizer attribution and a unique idempotency key. Database triggers reject updates and deletes. Mistakes are corrected with a compensating entry that may reference the original. The score derived from attempts, approved reviews and question hints is floored at zero first; the sum of manual adjustments is then applied and the authoritative final score is floored at zero again. Detail, ranking and analytics use this same derivation.
+- *Decision:* `score_adjustments` accepts only +10, +5, -10, or -5 entries with a required reason, organizer attribution and a unique idempotency key. Database triggers reject updates and deletes. Mistakes are corrected with a compensating entry that may reference the original. The base score uses only raw correct/incorrect `answer_attempts` and question hints, with the edition scoring snapshot and a zero floor. The sum of explicit manual adjustments is then applied and the final score is floored at zero again. Approved answer-review fields are historical evidence and may support legacy progression, but never change score, raw counts, ranking or analytics automatically.
 - *Status:* Accepted.
 
 **Historical feedback is reported only when persisted**

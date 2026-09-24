@@ -13,6 +13,7 @@
  */
 
 import { normalizeAnswer } from '@busqueda-tesoro/shared'
+import { calculatePostEventScore, type PostEventScore } from '../lib/post-event-scoring.js'
 
 // ── Row types ─────────────────────────────────────────────────────────────
 
@@ -440,8 +441,7 @@ export async function getOrganizerResults(db: D1Database) {
       (SELECT COUNT(*) FROM session_steps WHERE session_id = s.id) as totalSteps,
       IFNULL(SUM(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END), 0) as correctCount,
       IFNULL(SUM(CASE WHEN a.correct = 0 THEN 1 ELSE 0 END), 0) as wrongCount,
-      (SELECT COALESCE(SUM(awarded_correct),0) FROM answer_review_requests r WHERE r.session_id=s.id AND r.status='APPROVED') as manualCorrectCount,
-      (SELECT COALESCE(SUM(reversed_wrong),0) FROM answer_review_requests r WHERE r.session_id=s.id AND r.status='APPROVED') as reversedWrongCount,
+      (SELECT COUNT(*) FROM answer_review_requests r WHERE r.session_id=s.id AND r.status='APPROVED') as approvedReviewCount,
       (SELECT COALESCE(SUM(amount),0) FROM score_adjustments sa WHERE sa.session_id=s.id) as manualAdjustmentTotal,
       (SELECT COUNT(*) FROM score_adjustments sa WHERE sa.session_id=s.id) as manualAdjustmentCount,
       (SELECT COUNT(*) FROM question_hint_usage h WHERE h.session_id = s.id) as hintsUsed,
@@ -564,10 +564,12 @@ export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number
     const step = Number(attempt.stepPosition)
     const list = attemptsByStep.get(step) ?? []
     const baseEffect = Number(attempt.correct) === 1 ? Number(settings?.points_per_correct ?? 100) : -Number(settings?.wrong_answer_penalty ?? 10)
-    const reviewCorrection = attempt.reviewStatus === 'APPROVED'
-      ? Number(attempt.awardedCorrect ?? 0) * Number(settings?.points_per_correct ?? 100) + Number(attempt.reversedWrong ?? 0) * Number(settings?.wrong_answer_penalty ?? 10)
-      : 0
-    list.push({ ...attempt, correct: Number(attempt.correct) === 1, scoreEffect: baseEffect, reviewCorrection })
+    list.push({
+      ...attempt,
+      correct: Number(attempt.correct) === 1,
+      scoreEffect: baseEffect,
+      reviewRequiresManualAudit: attempt.reviewStatus === 'APPROVED',
+    })
     attemptsByStep.set(step, list)
   }
 
@@ -592,7 +594,7 @@ export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number
       attemptIds: [Number(attempt.id), Number(laterMatchingCorrect.id)],
     })
     if (attempt.reviewStatus === 'APPROVED') auditSuggestions.push({
-      code: 'APPROVED_REVIEW', label: 'Una respuesta incorrecta tuvo revisión aprobada.', attemptIds: [Number(attempt.id)],
+      code: 'APPROVED_REVIEW', label: 'Una respuesta incorrecta tuvo revisión aprobada. Revisá manualmente si corresponde ajustar el puntaje.', attemptIds: [Number(attempt.id)],
     })
     if (attempt.reviewStatus === 'PENDING') auditSuggestions.push({
       code: 'PENDING_REVIEW', label: 'Hay una revisión de respuesta todavía pendiente.', attemptIds: [Number(attempt.id)],
@@ -608,6 +610,7 @@ export async function getOrganizerPlayerDetail(db: D1Database, sessionId: number
     scoreBreakdown,
     scoreAdjustments: scoreAdjustments.results ?? [],
     auditSuggestions,
+    approvedReviewCount: flatAttempts.filter((attempt: any) => attempt.reviewStatus === 'APPROVED').length,
     auditStatus: session.auditReviewedAt ? 'REVIEWED' : 'PENDING',
     errors: flatAttempts.filter((attempt: any) => !attempt.correct).length,
     questionHints: history.filter((item: any) => item.hintUsedAt).length,
@@ -670,59 +673,31 @@ export async function getSessionScore(db: D1Database, sessionId: number): Promis
   return (await getSessionScoreBreakdown(db, sessionId)).finalScore
 }
 
-export type SessionScoreBreakdown = {
-  rawCorrectCount: number
-  rawWrongCount: number
-  approvedCorrectCount: number
-  approvedReversedWrongCount: number
-  correctCount: number
-  wrongCount: number
-  hintCount: number
-  pointsPerCorrect: number
-  wrongAnswerPenalty: number
-  hintPenalty: number
-  scoreBeforeApprovedReviews: number
-  approvedReviewCorrection: number
-  originalCalculatedScore: number
-  manualAdjustmentTotal: number
-  finalScore: number
-}
+export type SessionScoreBreakdown = PostEventScore
 
 /** Single authoritative score derivation used by gameplay, detail, ranking and analytics. */
 export async function getSessionScoreBreakdown(db: D1Database, sessionId: number): Promise<SessionScoreBreakdown> {
   const row = await db.prepare(`SELECT
     (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 1) AS rawCorrectCount,
     (SELECT COUNT(*) FROM answer_attempts WHERE session_id = ? AND correct = 0) AS rawWrongCount,
-    (SELECT COALESCE(SUM(awarded_correct),0) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED') AS approvedCorrectCount,
-    (SELECT COALESCE(SUM(reversed_wrong),0) FROM answer_review_requests WHERE session_id = ? AND status = 'APPROVED') AS approvedReversedWrongCount,
     (SELECT COUNT(*) FROM question_hint_usage WHERE session_id = ?) AS hintCount,
     er.points_per_correct AS pointsPerCorrect,
     er.wrong_answer_penalty AS wrongAnswerPenalty,
     er.hint_penalty AS hintPenalty,
     (SELECT COALESCE(SUM(amount),0) FROM score_adjustments WHERE session_id = ?) AS manualAdjustmentTotal
     FROM sessions s JOIN event_runs er ON er.id = s.event_run_id WHERE s.id = ?
-  `).bind(sessionId, sessionId, sessionId, sessionId, sessionId, sessionId, sessionId).first<any>()
+  `).bind(sessionId, sessionId, sessionId, sessionId, sessionId).first<any>()
   const rawCorrectCount = Number(row?.rawCorrectCount ?? 0)
   const rawWrongCount = Number(row?.rawWrongCount ?? 0)
-  const approvedCorrectCount = Number(row?.approvedCorrectCount ?? 0)
-  const approvedReversedWrongCount = Math.min(rawWrongCount, Number(row?.approvedReversedWrongCount ?? 0))
-  const correctCount = rawCorrectCount + approvedCorrectCount
-  const wrongCount = Math.max(0, rawWrongCount - approvedReversedWrongCount)
   const hintCount = Number(row?.hintCount ?? 0)
   const pointsPerCorrect = Number(row?.pointsPerCorrect ?? 100)
   const wrongAnswerPenalty = Number(row?.wrongAnswerPenalty ?? 10)
   const hintPenalty = Number(row?.hintPenalty ?? 5)
-  const scoreBeforeApprovedReviews = Math.max(0, rawCorrectCount * pointsPerCorrect - rawWrongCount * wrongAnswerPenalty - hintCount * hintPenalty)
-  const approvedReviewCorrection = approvedCorrectCount * pointsPerCorrect + approvedReversedWrongCount * wrongAnswerPenalty
-  const originalCalculatedScore = Math.max(0, correctCount * pointsPerCorrect - wrongCount * wrongAnswerPenalty - hintCount * hintPenalty)
   const manualAdjustmentTotal = Number(row?.manualAdjustmentTotal ?? 0)
-  return {
-    rawCorrectCount, rawWrongCount, approvedCorrectCount, approvedReversedWrongCount,
-    correctCount, wrongCount, hintCount, pointsPerCorrect, wrongAnswerPenalty, hintPenalty,
-    scoreBeforeApprovedReviews, approvedReviewCorrection,
-    originalCalculatedScore, manualAdjustmentTotal,
-    finalScore: Math.max(0, originalCalculatedScore + manualAdjustmentTotal),
-  }
+  return calculatePostEventScore({
+    rawCorrectCount, rawWrongCount, hintCount, pointsPerCorrect, wrongAnswerPenalty,
+    hintPenalty, manualAdjustmentTotal,
+  })
 }
 
 export async function getCheckpointByFallbackCode(db: D1Database, code: string): Promise<CheckpointRow | null> {

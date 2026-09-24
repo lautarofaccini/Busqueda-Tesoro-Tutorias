@@ -1,4 +1,5 @@
 import { parsePersistedUtc } from './timestamps.js'
+import { calculatePostEventScore } from './post-event-scoring.js'
 
 type RunRow = {
   id: number
@@ -62,8 +63,7 @@ export async function getRunAnalytics(db: D1Database, runId: number) {
         SUM(CASE WHEN correct=0 THEN 1 ELSE 0 END) AS rawWrong
         FROM answer_attempts GROUP BY session_id),
       reviews AS (SELECT session_id,
-        SUM(CASE WHEN status='APPROVED' THEN awarded_correct ELSE 0 END) AS manualCorrect,
-        SUM(CASE WHEN status='APPROVED' THEN reversed_wrong ELSE 0 END) AS reversedWrong,
+        SUM(CASE WHEN status='APPROVED' THEN 1 ELSE 0 END) AS approvedReviewCount,
         SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END) AS pendingReview
         FROM answer_review_requests GROUP BY session_id),
       hints AS (SELECT session_id, COUNT(*) AS hintsUsed FROM question_hint_usage GROUP BY session_id),
@@ -76,10 +76,10 @@ export async function getRunAnalytics(db: D1Database, runId: number) {
         s.started_at AS startedAt, s.completed_at AS completedAt,
         s.invalidated_at AS invalidatedAt, s.invalidation_reason AS invalidationReason,
         s.audit_reviewed_at AS auditReviewedAt, s.audit_reviewed_by AS auditReviewedBy,
-        COALESCE(a.rawCorrect,0) + COALESCE(r.manualCorrect,0) AS correctCount,
-        MAX(0, COALESCE(a.rawWrong,0) - COALESCE(r.reversedWrong,0)) AS wrongCount,
+        COALESCE(a.rawCorrect,0) AS correctCount,
+        COALESCE(a.rawWrong,0) AS wrongCount,
         COALESCE(h.hintsUsed,0) AS hintsUsed, COALESCE(st.totalSteps,0) AS totalSteps,
-        COALESCE(r.pendingReview,0) AS pendingReview,
+        COALESCE(r.pendingReview,0) AS pendingReview, COALESCE(r.approvedReviewCount,0) AS approvedReviewCount,
         COALESCE(adj.manualAdjustmentTotal,0) AS manualAdjustmentTotal,
         COALESCE(adj.manualAdjustmentCount,0) AS manualAdjustmentCount
       FROM sessions s JOIN participants p ON p.id=s.participant_id
@@ -139,16 +139,19 @@ export async function getRunAnalytics(db: D1Database, runId: number) {
     const correctCount = Number(row.correctCount)
     const wrongCount = Number(row.wrongCount)
     const hintsUsed = Number(row.hintsUsed)
-    const originalCalculatedScore = Math.max(0, correctCount * Number(run.pointsPerCorrect)
-      - wrongCount * Number(run.wrongAnswerPenalty) - hintsUsed * Number(run.hintPenalty))
     const manualAdjustmentTotal = Number(row.manualAdjustmentTotal ?? 0)
-    const score = Math.max(0, originalCalculatedScore + manualAdjustmentTotal)
+    const scoreBreakdown = calculatePostEventScore({
+      rawCorrectCount: correctCount, rawWrongCount: wrongCount, hintCount: hintsUsed,
+      pointsPerCorrect: Number(run.pointsPerCorrect), wrongAnswerPenalty: Number(run.wrongAnswerPenalty),
+      hintPenalty: Number(run.hintPenalty), manualAdjustmentTotal,
+    })
     const completed = row.status === 'completed' && row.completedAt
     return {
       ...row,
       id: Number(row.id), participantId: Number(row.participantId), correctCount, wrongCount, hintsUsed,
-      totalSteps: Number(row.totalSteps), pendingReview: Boolean(row.pendingReview), score,
-      originalCalculatedScore, manualAdjustmentTotal,
+      totalSteps: Number(row.totalSteps), pendingReview: Boolean(row.pendingReview), score: scoreBreakdown.finalScore,
+      approvedReviewCount: Number(row.approvedReviewCount ?? 0),
+      baseScore: scoreBreakdown.baseScore, manualAdjustmentTotal,
       manualAdjustmentCount: Number(row.manualAdjustmentCount ?? 0),
       auditStatus: row.auditReviewedAt ? 'REVIEWED' : 'PENDING',
       durationSec: completed ? Math.max(0, Math.floor((parsePersistedUtc(row.completedAt) - parsePersistedUtc(row.startedAt)) / 1000)) : null,

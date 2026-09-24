@@ -15,10 +15,11 @@ export type PlayerDetail = {
   startedAt: string
   completedAt: string | null
   score: number
-  scoreBreakdown?: { scoreBeforeApprovedReviews: number; approvedReviewCorrection: number; originalCalculatedScore: number; manualAdjustmentTotal: number; finalScore: number }
+  scoreBreakdown?: { rawCorrectCount: number; rawWrongCount: number; hintCount: number; baseScore: number; manualAdjustmentTotal: number; finalScore: number }
   scoreAdjustments?: Array<{ id: number; amount: number; reason: string; createdAt: string; createdBy: string; relatedAttemptId: number | null; compensatesAdjustmentId: number | null }>
   auditSuggestions?: Array<{ code: string; label: string; attemptIds?: number[] }>
   auditStatus?: 'PENDING' | 'REVIEWED'
+  approvedReviewCount?: number
   auditReviewedAt?: string | null
   errors: number
   questionHints: number
@@ -43,7 +44,7 @@ export type PlayerDetail = {
       reviewStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
       reviewRequestedAt: string | null
       reviewResolvedAt: string | null
-      reviewCorrection: number
+      reviewRequiresManualAudit?: boolean
     }>
   }>
 }
@@ -135,13 +136,14 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
           <div className="rounded bg-white p-3"><span className="text-neutral-500">Identificación</span><p className="font-bold">{detail.identifierType} ···{detail.identifierSuffix}</p></div>
           <div className="rounded bg-white p-3"><span className="text-neutral-500">Puntaje</span><p className="text-xl font-black text-orange-700">{detail.score}</p></div>
           <div className="rounded bg-white p-3"><span className="text-neutral-500">Progreso</span><p className="font-bold">Paso {Math.min(detail.currentStep, detail.totalSteps)} / {detail.totalSteps}</p></div>
-          <div className="rounded bg-white p-3"><span className="text-neutral-500">Errores</span><p className="font-bold">{detail.errors}</p></div>
+          <div className="rounded bg-white p-3"><span className="text-neutral-500">Errores registrados</span><p className="font-bold">{detail.errors}</p></div>
           <div className="rounded bg-white p-3"><span className="text-neutral-500">Pistas</span><p className="font-bold">{detail.questionHints} pregunta · {detail.navigationHints} recorrido</p></div>
         </div>
 
         <section className="mt-4 rounded border-2 border-amber-300 bg-amber-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-black">Auditoría de puntaje</h3><p className="text-xs text-neutral-600">Estado: {detail.auditStatus === 'REVIEWED' ? 'REVISADO' : 'PENDIENTE'}</p></div><button type="button" onClick={() => void setAuditReviewed(detail.auditStatus !== 'REVIEWED')} className="rounded border bg-white px-3 py-2 text-xs font-bold">{detail.auditStatus === 'REVIEWED' ? 'Marcar pendiente' : 'Marcar como revisado'}</button></div>
-          {detail.scoreBreakdown && <dl className="mt-3 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-5"><div className="rounded bg-white p-2"><dt>Antes de revisiones</dt><dd className="text-lg font-black">{detail.scoreBreakdown.scoreBeforeApprovedReviews}</dd></div><div className="rounded bg-white p-2"><dt>Revisiones aprobadas</dt><dd className="text-lg font-black">{signed(detail.scoreBreakdown.approvedReviewCorrection)}</dd></div><div className="rounded bg-white p-2"><dt>Calculado</dt><dd className="text-lg font-black">{detail.scoreBreakdown.originalCalculatedScore}</dd></div><div className="rounded bg-white p-2"><dt>Ajustes manuales</dt><dd className="text-lg font-black">{signed(detail.scoreBreakdown.manualAdjustmentTotal)}</dd></div><div className="rounded bg-white p-2"><dt>Final</dt><dd className="text-lg font-black text-orange-700">{detail.scoreBreakdown.finalScore}</dd></div></dl>}
+          {detail.scoreBreakdown && <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded bg-white p-2"><dt>Puntaje base</dt><dd className="text-lg font-black">{detail.scoreBreakdown.baseScore}</dd></div><div className="rounded bg-white p-2"><dt>Ajustes manuales</dt><dd className="text-lg font-black">{signed(detail.scoreBreakdown.manualAdjustmentTotal)}</dd></div><div className="rounded bg-white p-2"><dt>Puntaje final</dt><dd className="text-lg font-black text-orange-700">{detail.scoreBreakdown.finalScore}</dd></div></dl>}
+          {(detail.approvedReviewCount ?? 0) > 0 && <p className="mt-3 rounded bg-white p-2 text-sm font-bold text-blue-800">Revisiones aprobadas: {detail.approvedReviewCount} · sin impacto automático en el puntaje.</p>}
           {(detail.auditSuggestions?.length ?? 0) > 0 ? <div className="mt-3"><p className="text-xs font-black uppercase text-amber-900">Sugerencias para revisión — no automáticas</p><ul className="mt-1 list-disc space-y-1 pl-5 text-sm">{detail.auditSuggestions!.map((suggestion, index) => <li key={`${suggestion.code}-${index}`}>{suggestion.label}</li>)}</ul></div> : <p className="mt-3 text-sm text-neutral-600">No se detectaron señales automáticas; igualmente podés revisar el historial completo.</p>}
           <button type="button" onClick={() => { setShowCorrection(true); setIdempotencyKey('') }} className="mt-3 rounded bg-amber-700 px-4 py-2 font-bold text-white">Corregir puntaje</button>
         </section>
@@ -187,7 +189,7 @@ export function PlayerDetailDrawer({ sessionId, onClose }: { sessionId: number; 
               <p className="text-xs text-neutral-500">{formatEventTime(attempt.attemptedAt)}</p>
               <p className="break-words text-base">“{attempt.answer}”</p>
               <p className={attempt.correct ? 'font-bold text-green-700' : 'font-bold text-red-700'}>{attempt.correct ? 'Correcta' : 'Incorrecta'} · {signed(attempt.scoreEffect)}</p>
-              {attempt.reviewStatus && <p className="mt-1 font-bold text-blue-800">Revisión: {reviewLabel(attempt.reviewStatus)}{attempt.reviewCorrection ? ` · corrección ${signed(attempt.reviewCorrection)}` : ''}</p>}
+              {attempt.reviewStatus && <p className="mt-1 font-bold text-blue-800">Revisión: {reviewLabel(attempt.reviewStatus)}{attempt.reviewRequiresManualAudit ? ' · requiere auditoría manual del puntaje' : ''}</p>}
             </div>)}</div>}
           </article>)}
           {!detail.history.length && <p className="rounded border bg-white p-4 text-sm text-neutral-500">Todavía no hay preguntas asignadas.</p>}

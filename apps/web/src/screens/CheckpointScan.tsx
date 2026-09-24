@@ -412,7 +412,7 @@ export function ChallengeScreen({ state, onResult }: { state: Extract<GameState,
         setReview(relevant)
         if (relevant?.status === 'APPROVED') {
           pendingObserved = false
-          setReviewNotice(isReviewAcknowledged(relevant.id) ? null : { reviewId: relevant.id, status: 'APPROVED', text: `¡Tu respuesta fue aprobada! Puntaje corregido: +${relevant.scoreCorrection}` })
+          setReviewNotice(isReviewAcknowledged(relevant.id) ? null : { reviewId: relevant.id, status: 'APPROVED', text: 'Tu respuesta fue aprobada. No modifica el puntaje automáticamente.' })
           const current = await getGameState()
           if (!stopped) resultHandler.current(current)
           return

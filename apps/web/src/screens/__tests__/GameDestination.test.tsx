@@ -101,10 +101,10 @@ describe('next destination actions', () => {
     expect(screen.queryByText('Tu respuesta fue revisada y no fue aceptada.')).not.toBeInTheDocument()
   })
 
-  it('recovers an approved review with its authoritative correction after refresh', async () => {
-    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [{ id: 32, challenge_id: 7, answer_attempt_id: 42, status: 'APPROVED', created_at: new Date().toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 110 }], support: [] })
+  it('recovers an approved review without claiming automatic score impact', async () => {
+    vi.mocked(client.getSupportStatus).mockResolvedValue({ reviews: [{ id: 32, challenge_id: 7, answer_attempt_id: 42, status: 'APPROVED', created_at: new Date().toISOString(), resolved_at: new Date().toISOString(), scoreCorrection: 0, requiresManualScoreAudit: true }], support: [] })
     render(<MemoryRouter><GameScreen /></MemoryRouter>)
-    expect(await screen.findByText('¡Tu respuesta fue aprobada! Puntaje corregido: +110')).toBeInTheDocument()
+    expect(await screen.findByText('Tu respuesta fue aprobada. No modifica el puntaje automáticamente.')).toBeInTheDocument()
   })
 
   it('does not leak an older terminal result into a later pending review', async () => {
